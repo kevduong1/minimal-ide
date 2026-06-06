@@ -11,6 +11,15 @@
   min-height: 0;
 }
 
+/* one per open repo; inactive ones are hidden (display:none) but stay
+   mounted so terminals keep running and editor state survives switches */
+.workspace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .app-center {
   display: flex;
   flex-direction: column;

@@ -11,6 +11,7 @@
 //! file explorer debounces its directory re-reads separately (300 ms) because
 //! they are much cheaper than a git status+log round trip.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -25,9 +26,10 @@ pub struct ActiveWatch {
     _watcher: RecommendedWatcher,
 }
 
+/// One watcher per open repository, keyed by workdir root.
 #[derive(Default)]
 pub struct WatcherState {
-    active: Mutex<Option<ActiveWatch>>,
+    active: Mutex<HashMap<String, ActiveWatch>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -140,14 +142,20 @@ pub async fn watch_repo(
         let _ = watcher.watch(&common_refs, RecursiveMode::Recursive);
     }
 
-    // Replacing the previous watch drops its watcher, which stops it and
-    // shuts down its debounce thread.
-    *state.active.lock() = Some(ActiveWatch { _watcher: watcher });
+    // Re-watching the same root replaces (and thus drops) the previous
+    // watcher, which stops it and shuts down its debounce thread.
+    state
+        .active
+        .lock()
+        .insert(repo_path, ActiveWatch { _watcher: watcher });
     Ok(())
 }
 
 #[tauri::command]
-pub async fn unwatch_repo(state: tauri::State<'_, WatcherState>) -> Result<(), String> {
-    *state.active.lock() = None;
+pub async fn unwatch_repo(
+    state: tauri::State<'_, WatcherState>,
+    repo_path: String,
+) -> Result<(), String> {
+    state.active.lock().remove(&repo_path);
     Ok(())
 }

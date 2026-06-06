@@ -8,8 +8,7 @@ import {
 } from "react";
 import { confirm, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import { useShallow } from "zustand/react/shallow";
-import { useRepoStore } from "../stores/repo";
-import { useEditorStore } from "../stores/editor";
+import { useEditor, useRepo, useWorkspace } from "../stores/workspaces";
 import type { FileStatus } from "../lib/ipc";
 import { statusColor, statusLetter, statusPaths } from "../lib/status";
 import GitGraph from "./GitGraph";
@@ -88,17 +87,16 @@ function Section({
 /* ----------------------------------------------------------------------- */
 
 function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
-  const openDiff = useEditorStore((s) => s.openDiff);
-  const openFile = useEditorStore((s) => s.openFile);
+  const ws = useWorkspace();
+  const openDiff = useEditor((s) => s.openDiff);
+  const openFile = useEditor((s) => s.openFile);
   const color = statusColor(file.status);
   const name = basename(file.path);
   const dir = dirname(file.path);
 
   const onRowClick = () => {
-    const repoPath = useRepoStore.getState().repoPath;
-    if (!repoPath) return;
     openDiff({
-      repoPath,
+      repoPath: ws.path,
       path: file.path,
       kind: staged ? "staged" : "worktree",
       status: file.status,
@@ -107,9 +105,7 @@ function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
   };
 
   const onOpenFile = () => {
-    const repoPath = useRepoStore.getState().repoPath;
-    if (!repoPath) return;
-    openFile(`${repoPath}/${file.path}`);
+    openFile(`${ws.path}/${file.path}`);
   };
 
   const onDiscard = async () => {
@@ -121,7 +117,7 @@ function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
       title: "Discard Changes",
       kind: "warning",
     });
-    if (ok) await useRepoStore.getState().discard(statusPaths(file));
+    if (ok) await ws.repo.getState().discard(statusPaths(file));
   };
 
   return (
@@ -152,7 +148,7 @@ function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
           <button
             className="icon-btn"
             title="Unstage Changes"
-            onClick={() => void useRepoStore.getState().unstage(statusPaths(file))}
+            onClick={() => void ws.repo.getState().unstage(statusPaths(file))}
           >
             <IcMinus />
           </button>
@@ -160,7 +156,7 @@ function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
           <button
             className="icon-btn"
             title="Stage Changes"
-            onClick={() => void useRepoStore.getState().stage(statusPaths(file))}
+            onClick={() => void ws.repo.getState().stage(statusPaths(file))}
           >
             <IcPlus />
           </button>
@@ -180,7 +176,8 @@ function FileRow({ file, staged }: { file: FileStatus; staged: boolean }) {
 const MAX_INPUT_HEIGHT = 6 * 18 + 12; // 6 lines * line-height + padding
 
 export default function SourceControl() {
-  const { status, stashes, syncing } = useRepoStore(
+  const ws = useWorkspace();
+  const { status, stashes, syncing } = useRepo(
     useShallow((s) => ({
       status: s.status,
       stashes: s.stashes,
@@ -192,7 +189,7 @@ export default function SourceControl() {
     fetch: fetchRemote,
     pull,
     push,
-  } = useRepoStore(
+  } = useRepo(
     useShallow((s) => ({
       refresh: s.refresh,
       fetch: s.fetch,
@@ -235,8 +232,8 @@ export default function SourceControl() {
       const msg = commitMsg.trim();
       // an empty message + amend keeps the prior commit message
       if ((!msg && !amend) || busy) return;
-      const store = useRepoStore.getState();
-      if (!store.repoPath || !store.status) return;
+      const store = ws.repo.getState();
+      if (!store.status) return;
       setBusy(true);
       try {
         if (!amend && store.status.staged.length === 0) {
@@ -257,12 +254,12 @@ export default function SourceControl() {
         const ok = await store.commit(msg, amend);
         if (!ok) return;
         setCommitMsg("");
-        if (andPush) await useRepoStore.getState().push();
+        if (andPush) await ws.repo.getState().push();
       } finally {
         setBusy(false);
       }
     },
-    [commitMsg, busy],
+    [commitMsg, busy, ws],
   );
 
   const onCommitKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -273,9 +270,9 @@ export default function SourceControl() {
   };
 
   const onStageAll = () =>
-    void useRepoStore.getState().stage(unstaged.flatMap(statusPaths));
+    void ws.repo.getState().stage(unstaged.flatMap(statusPaths));
   const onUnstageAll = () =>
-    void useRepoStore.getState().unstage(staged.flatMap(statusPaths));
+    void ws.repo.getState().unstage(staged.flatMap(statusPaths));
 
   const onDiscardAll = async () => {
     const n = unstaged.length;
@@ -284,7 +281,7 @@ export default function SourceControl() {
       `Are you sure you want to discard ALL ${n} ${n === 1 ? "change" : "changes"}?\nThis is irreversible!`,
       { title: "Discard All Changes", kind: "warning" },
     );
-    if (ok) await useRepoStore.getState().discard(unstaged.flatMap(statusPaths));
+    if (ok) await ws.repo.getState().discard(unstaged.flatMap(statusPaths));
   };
 
   const revealStashInput = () => {
@@ -297,7 +294,7 @@ export default function SourceControl() {
       const msg = stashMsg.trim();
       setStashInputOpen(false);
       setStashMsg("");
-      void useRepoStore.getState().stashSave(msg || null, true);
+      void ws.repo.getState().stashSave(msg || null, true);
     } else if (e.key === "Escape") {
       setStashInputOpen(false);
       setStashMsg("");
@@ -309,7 +306,7 @@ export default function SourceControl() {
       `Are you sure you want to delete stash@{${index}}?`,
       { title: "Drop Stash", kind: "warning" },
     );
-    if (ok) await useRepoStore.getState().stashDrop(oid);
+    if (ok) await ws.repo.getState().stashDrop(oid);
   };
 
   const canCommit = commitMsg.trim().length > 0 && !busy;
@@ -541,18 +538,14 @@ export default function SourceControl() {
                   <button
                     className="icon-btn"
                     title="Apply Stash"
-                    onClick={() =>
-                      void useRepoStore.getState().stashApply(st.oid)
-                    }
+                    onClick={() => void ws.repo.getState().stashApply(st.oid)}
                   >
                     <IcApply />
                   </button>
                   <button
                     className="icon-btn"
                     title="Pop Stash"
-                    onClick={() =>
-                      void useRepoStore.getState().stashPop(st.oid)
-                    }
+                    onClick={() => void ws.repo.getState().stashPop(st.oid)}
                   >
                     <IcPop />
                   </button>

@@ -60,6 +60,14 @@ pub async fn pty_spawn(
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // Masquerade as a notification-capable terminal: agent CLIs (Claude Code
+    // & friends) only emit OSC 9 / OSC 777 notification sequences when they
+    // recognize TERM_PROGRAM. The frontend (lib/terminalActivity.ts) turns
+    // those into needs-attention indicators on terminal and workspace tabs.
+    // Known cost: TERM_PROGRAM-sniffing tools (chafa, yazi, ...) may assume
+    // Kitty graphics support and emit images xterm.js silently drops.
+    cmd.env("TERM_PROGRAM", "ghostty");
+    cmd.env("TERM_PROGRAM_VERSION", "1.2.0");
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     // The slave fd is owned by the child now; close our copy.

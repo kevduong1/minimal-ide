@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createStore, type StoreApi } from "zustand/vanilla";
 
 /**
  * Pure UI-state model for the integrated terminal panel: tabs, and splits
@@ -14,9 +14,46 @@ export interface TerminalTab {
   activePaneId: string;
 }
 
-interface TerminalState {
+/** Live activity of one pane, reported by its tracker (lib/terminalActivity). */
+export interface PaneActivity {
+  busy: boolean;
+  attention: boolean;
+}
+
+export type ActivityLevel = "idle" | "busy" | "attention";
+
+/** attention > busy > idle over panes (all panes when paneIds is omitted). */
+export const aggregateActivity = (
+  paneActivity: Record<string, PaneActivity>,
+  paneIds?: string[],
+): ActivityLevel => {
+  const all = paneIds
+    ? paneIds.map((id) => paneActivity[id])
+    : Object.values(paneActivity);
+  let busy = false;
+  for (const a of all) {
+    if (a?.attention) return "attention";
+    if (a?.busy) busy = true;
+  }
+  return busy ? "busy" : "idle";
+};
+
+/** Drop activity entries for removed panes (no-op when none are present). */
+const pruneActivity = (
+  paneActivity: Record<string, PaneActivity>,
+  paneIds: string[],
+): Record<string, PaneActivity> => {
+  if (!paneIds.some((id) => id in paneActivity)) return paneActivity;
+  const next = { ...paneActivity };
+  for (const id of paneIds) delete next[id];
+  return next;
+};
+
+export interface TerminalState {
   tabs: TerminalTab[];
   activeTabId: string | null;
+  /** Sparse per-pane activity — only panes that are busy / need attention. */
+  paneActivity: Record<string, PaneActivity>;
 
   newTab: () => void;
   closeTab: (id: string) => void;
@@ -29,7 +66,11 @@ interface TerminalState {
    */
   closePane: (tabId: string, paneId: string) => void;
   setActivePane: (tabId: string, paneId: string) => void;
+  /** Reported by the pane's activity tracker; idle panes are dropped. */
+  setPaneActivity: (paneId: string, activity: PaneActivity) => void;
 }
+
+export type TerminalStore = StoreApi<TerminalState>;
 
 /** Lowest unused "Terminal N" number (resets once all tabs are closed). */
 const nextTitleNumber = (tabs: TerminalTab[]): number =>
@@ -38,9 +79,12 @@ const nextTitleNumber = (tabs: TerminalTab[]): number =>
     return m ? Math.max(max, Number(m[1])) : max;
   }, 0) + 1;
 
-export const useTerminalStore = create<TerminalState>((set, get) => ({
+/** Per-workspace terminal store; created by the workspaces store. */
+export const createTerminalStore = (): TerminalStore =>
+  createStore<TerminalState>((set, get) => ({
   tabs: [],
   activeTabId: null,
+  paneActivity: {},
 
   newTab: () =>
     set((s) => {
@@ -65,7 +109,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           ? tabs[Math.min(idx, tabs.length - 1)].id
           : null;
       }
-      return { tabs, activeTabId };
+      return {
+        tabs,
+        activeTabId,
+        paneActivity: pruneActivity(s.paneActivity, s.tabs[idx].paneIds),
+      };
     }),
 
   setActiveTab: (id) =>
@@ -103,6 +151,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
             : t.activePaneId;
         return { ...t, paneIds, activePaneId };
       }),
+      paneActivity: pruneActivity(s.paneActivity, [paneId]),
     }));
   },
 
@@ -117,4 +166,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         ),
       };
     }),
-}));
+
+  setPaneActivity: (paneId, activity) =>
+    set((s) => {
+      const keep = activity.busy || activity.attention;
+      if (!keep && !(paneId in s.paneActivity)) return s;
+      const paneActivity = { ...s.paneActivity };
+      if (keep) paneActivity[paneId] = activity;
+      else delete paneActivity[paneId];
+      return { paneActivity };
+    }),
+  }));

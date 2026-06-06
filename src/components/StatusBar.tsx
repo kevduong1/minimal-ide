@@ -1,30 +1,24 @@
-import { useRepoStore } from "../stores/repo";
+import { useStore } from "zustand";
+import { useActiveWorkspace, type Workspace } from "../stores/workspaces";
 import { useUiStore } from "../stores/ui";
 import { IcBranch, IcSidebar, IcTerminal } from "./icons";
 import "./StatusBar.css";
 
-export default function StatusBar() {
-  const repoPath = useRepoStore((s) => s.repoPath);
-  const status = useRepoStore((s) => s.status);
-  const syncing = useRepoStore((s) => s.syncing);
-  const error = useRepoStore((s) => s.error);
-  const refresh = useRepoStore((s) => s.refresh);
-  const clearError = useRepoStore((s) => s.clearError);
-
-  const terminalVisible = useUiStore((s) => s.terminalVisible);
-  const sidebarVisible = useUiStore((s) => s.sidebarVisible);
-  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
-  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+/** Branch / sync / error readout for the active workspace. */
+function RepoStatus({ ws }: { ws: Workspace }) {
+  const status = useStore(ws.repo, (s) => s.status);
+  const syncing = useStore(ws.repo, (s) => s.syncing);
+  const error = useStore(ws.repo, (s) => s.error);
 
   const branch = status?.branch ?? null;
 
   return (
-    <div className="statusbar">
+    <>
       {branch && (
         <button
           className="statusbar-item statusbar-clickable"
           title="Refresh repository status"
-          onClick={() => void refresh()}
+          onClick={() => void ws.repo.getState().refresh()}
         >
           <IcBranch />
           <span className="truncate statusbar-branch-name">{branch.name}</span>
@@ -46,16 +40,31 @@ export default function StatusBar() {
         <button
           className="statusbar-item statusbar-clickable statusbar-error"
           title="Click to dismiss"
-          onClick={clearError}
+          onClick={() => ws.repo.getState().clearError()}
         >
           <span className="truncate">{error}</span>
         </button>
       )}
+    </>
+  );
+}
+
+export default function StatusBar() {
+  const ws = useActiveWorkspace();
+
+  const terminalVisible = useUiStore((s) => s.terminalVisible);
+  const sidebarVisible = useUiStore((s) => s.sidebarVisible);
+  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+
+  return (
+    <div className="statusbar">
+      {ws && <RepoStatus key={ws.path} ws={ws} />}
 
       <div className="statusbar-right">
-        {repoPath && (
-          <span className="truncate statusbar-path" title={repoPath}>
-            {repoPath}
+        {ws && (
+          <span className="truncate statusbar-path" title={ws.path}>
+            {ws.path}
           </span>
         )}
         <span className="statusbar-divider" />

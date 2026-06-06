@@ -5,7 +5,7 @@
  * SVG props, so callers can pass className / style / width etc. Sizing is
  * intentionally NOT hardcoded here — it comes from CSS at the call sites.
  */
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 export type IconProps = SVGProps<SVGSVGElement>;
 
@@ -206,3 +206,36 @@ export const IcRows = (props: IconProps) => (
     <path d="M1.5 8h13" />
   </Svg>
 );
+
+/* ------------------------------------------------------------------------- */
+/* Terminal activity                                                          */
+/* ------------------------------------------------------------------------- */
+
+/** 270° arc — spun by the .activity-busy CSS animation. */
+export const IcSpinner = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M14.5 8A6.5 6.5 0 1 1 8 1.5" />
+  </Svg>
+);
+export const IcDot = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+/**
+ * Tab activity indicator (terminal tab strip + titlebar workspace tabs):
+ * spinner while busy, pulsing dot when waiting on the user, otherwise the
+ * caller's idle glyph.
+ */
+export function ActivityGlyph({
+  activity,
+  idle,
+}: {
+  activity: "idle" | "busy" | "attention";
+  idle: ReactNode;
+}) {
+  if (activity === "attention") return <IcDot className="activity-attention" />;
+  if (activity === "busy") return <IcSpinner className="activity-busy" />;
+  return <>{idle}</>;
+}

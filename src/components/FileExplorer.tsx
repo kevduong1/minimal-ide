@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { fsReadDir, onRepoChanged, type DirEntry } from "../lib/ipc";
-import { useRepoStore } from "../stores/repo";
-import { useEditorStore } from "../stores/editor";
+import { useEditor, useRepo } from "../stores/workspaces";
 import {
   IcChevronRight,
   IcCollapseAll,
@@ -22,10 +21,10 @@ interface Row {
 }
 
 export default function FileExplorer() {
-  const repoPath = useRepoStore((s) => s.repoPath);
-  const repoName = useRepoStore((s) => s.repoName);
-  const openFile = useEditorStore((s) => s.openFile);
-  const activeTabId = useEditorStore((s) => s.activeTabId);
+  const repoPath = useRepo((s) => s.repoPath);
+  const repoName = useRepo((s) => s.repoName);
+  const openFile = useEditor((s) => s.openFile);
+  const activeTabId = useEditor((s) => s.activeTabId);
 
   const [cache, setCache] = useState<DirCache>(() => new Map());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -114,7 +113,9 @@ export default function FileExplorer() {
     let disposed = false;
     let unlisten: UnlistenFn | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    void onRepoChanged(() => {
+    void onRepoChanged((change) => {
+      // events arrive for every open workspace — only ours matter
+      if (change.repoPath !== repoPathRef.current) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void refetchExpanded(), 300);
     }).then((fn) => {

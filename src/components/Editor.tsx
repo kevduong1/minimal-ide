@@ -12,7 +12,12 @@ import { LanguageDescription } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { languages } from "@codemirror/language-data";
 import { fsReadFile, fsWriteFile, onRepoChanged } from "../lib/ipc";
-import { useEditorStore, type Tab } from "../stores/editor";
+import type { Tab } from "../stores/editor";
+import {
+  useEditor,
+  useWorkspace,
+  useWorkspacesStore,
+} from "../stores/workspaces";
 import { IcClose } from "./icons";
 import "./EditorArea.css";
 
@@ -101,11 +106,40 @@ export function BannerDismiss({ onClick }: { onClick: () => void }) {
 
 const draftCache = new Map<string, { text: string | Text; savedText: string | Text }>();
 
-// Drop drafts whose tab was closed.
-useEditorStore.subscribe((s) => {
-  for (const id of [...draftCache.keys()]) {
-    if (!s.tabs.some((t) => t.id === id)) draftCache.delete(id);
+// Keys are namespaced per workspace: with nested repos the same absolute file
+// can be open in two workspaces (identical tab id), and sharing one slot
+// would leak unsaved edits across them. NUL never appears in paths.
+const draftKeyFor = (wsPath: string, tabId: string) => `${wsPath}\0${tabId}`;
+
+// Drop drafts whose tab was closed (or whose whole workspace was closed).
+const pruneDrafts = () => {
+  const { workspaces } = useWorkspacesStore.getState();
+  for (const key of [...draftCache.keys()]) {
+    const sep = key.indexOf("\0");
+    const wsPath = key.slice(0, sep);
+    const tabId = key.slice(sep + 1);
+    const ws = workspaces.find((w) => w.path === wsPath);
+    if (!ws || !ws.editor.getState().tabs.some((t) => t.id === tabId)) {
+      draftCache.delete(key);
+    }
   }
+};
+
+// Subscribe each workspace's editor store (incl. ones created later) to the
+// pruner. Closed workspaces' subscriptions die with their stores.
+const prunerWired = new WeakSet<object>();
+const wirePruner = (state: ReturnType<typeof useWorkspacesStore.getState>) => {
+  for (const w of state.workspaces) {
+    if (!prunerWired.has(w.editor)) {
+      prunerWired.add(w.editor);
+      w.editor.subscribe(pruneDrafts);
+    }
+  }
+};
+wirePruner(useWorkspacesStore.getState());
+useWorkspacesStore.subscribe((s) => {
+  pruneDrafts(); // a workspace itself may have closed
+  wirePruner(s);
 });
 
 // ---------------------------------------------------------------------------
@@ -113,7 +147,9 @@ useEditorStore.subscribe((s) => {
 // ---------------------------------------------------------------------------
 
 export default function Editor({ tab }: { tab: FileTab }) {
-  const markDirty = useEditorStore((s) => s.markDirty);
+  const ws = useWorkspace();
+  const markDirty = useEditor((s) => s.markDirty);
+  const draftKey = draftKeyFor(ws.path, tab.id);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   /** Last loaded/saved content as a CodeMirror Text (no toString per keystroke). */
@@ -152,8 +188,8 @@ export default function Editor({ tab }: { tab: FileTab }) {
         savedRef.current = doc;
         const now = view.state.doc;
         const dirty = !now.eq(doc);
-        if (dirty) draftCache.set(tab.id, { text: now, savedText: doc });
-        else draftCache.delete(tab.id);
+        if (dirty) draftCache.set(draftKey, { text: now, savedText: doc });
+        else draftCache.delete(draftKey);
         markDirty(tab.id, dirty);
         setSaveError(null);
         setSaveConflict(false);
@@ -162,7 +198,7 @@ export default function Editor({ tab }: { tab: FileTab }) {
         if (viewRef.current === view) setSaveError(String(e));
       }
     },
-    [tab.id, tab.path, markDirty],
+    [tab.id, tab.path, draftKey, markDirty],
   );
 
   /** Replace the buffer with the on-disk content and mark it clean. */
@@ -177,14 +213,14 @@ export default function Editor({ tab }: { tab: FileTab }) {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: fresh },
       });
-      draftCache.delete(tab.id);
+      draftCache.delete(draftKey);
       markDirty(tab.id, false);
       setDiskChanged(false);
       setSaveConflict(false);
     } catch {
       // mid-write / deleted — keep the banner so the user can retry
     }
-  }, [tab.id, tab.path, markDirty]);
+  }, [tab.id, tab.path, draftKey, markDirty]);
 
   useEffect(() => {
     let disposed = false;
@@ -227,7 +263,7 @@ export default function Editor({ tab }: { tab: FileTab }) {
       let savedDoc: string | Text;
       let isTruncated = false;
 
-      const cached = draftCache.get(tab.id);
+      const cached = draftCache.get(draftKey);
       if (cached) {
         doc = cached.text;
         savedDoc = cached.savedText;
@@ -256,8 +292,8 @@ export default function Editor({ tab }: { tab: FileTab }) {
           if (!u.docChanged) return;
           const dirty = !u.state.doc.eq(savedRef.current);
           if (dirty)
-            draftCache.set(tab.id, { text: u.state.doc, savedText: savedRef.current });
-          else draftCache.delete(tab.id);
+            draftCache.set(draftKey, { text: u.state.doc, savedText: savedRef.current });
+          else draftCache.delete(draftKey);
           markDirty(tab.id, dirty);
         }),
         isTruncated
@@ -272,8 +308,10 @@ export default function Editor({ tab }: { tab: FileTab }) {
       setLoading(false);
 
       // Watch for external modifications (debounced — events arrive in bursts).
-      const unlisten = await onRepoChanged(() => {
-        if (disposed) return;
+      // Events arrive for every open workspace; only the repo containing this
+      // file can have changed it.
+      const unlisten = await onRepoChanged((change) => {
+        if (disposed || !tab.path.startsWith(`${change.repoPath}/`)) return;
         if (diskTimer) clearTimeout(diskTimer);
         diskTimer = setTimeout(() => void checkDisk(), DISK_CHECK_DEBOUNCE_MS);
       });
@@ -293,7 +331,7 @@ export default function Editor({ tab }: { tab: FileTab }) {
       viewRef.current = null;
       view?.destroy();
     };
-  }, [tab.id, tab.path, markDirty, save]);
+  }, [tab.id, tab.path, draftKey, markDirty, save]);
 
   return (
     <div className="editor-pane">

@@ -140,8 +140,9 @@ export default function DiffViewer({ tab }: { tab: DiffTab }) {
     };
     refetchRef.current = () => void refetch(true);
 
-    void onRepoChanged(() => {
-      if (disposed) return;
+    void onRepoChanged((change) => {
+      // events arrive for every open workspace — only our repo matters
+      if (disposed || change.repoPath !== diff.repoPath) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void refetch(false), REFETCH_DEBOUNCE_MS);
     }).then((fn) => {

@@ -1,8 +1,9 @@
 # CLAUDE.md
 
-Minimal IDE — a Tauri 2 macOS desktop app: git source control (status, staging,
-commit/amend/push, stashes, commit graph), integrated split terminals
-(portable-pty + xterm.js), and a CodeMirror 6 diff viewer/editor.
+Minimal IDE — a Tauri 2 macOS desktop app: multi-repo workspaces (titlebar tab
+switcher), git source control (status, staging, commit/amend/push, stashes,
+commit graph), integrated split terminals (portable-pty + xterm.js), and a
+CodeMirror 6 diff viewer/editor.
 Rust backend in `src-tauri/`, React 19 + TypeScript frontend in `src/` (Vite,
 zustand). No tests; correctness relies on typecheck + manual verification.
 
@@ -13,11 +14,14 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/ipc.ts` | Typed IPC contract — single source of truth for command names and payload shapes |
 | `src/lib/status.ts` | Shared status-code helpers: `statusLetter`, `statusColor`, `statusPaths` (renames span two paths!) |
 | `src/lib/graphLayout.ts` | Pure lane-layout algorithm for the commit graph (algorithm documented in-file) |
-| `src/stores/repo.ts` | Repo state: status/log/stashes, git mutations (return `Promise<boolean>`), watcher wiring, status-bar `error` |
-| `src/stores/editor.ts` | Editor tabs (`Tab = file \| diff`), dirty tracking, `closeTabSafely` (confirms unsaved) |
-| `src/stores/terminal.ts` | Terminal tab/pane UI state ONLY; never touches xterm or IPC |
-| `src/stores/ui.ts` | Sidebar/terminal visibility and sizes |
-| `src/App.tsx` | Shell layout, global shortcuts (⌘\` ⌘B ⌘W), welcome screen, drag resizers |
+| `src/lib/terminalActivity.ts` | Per-pane busy/attention heuristics (echo-suppressed output → busy; BEL/OSC 9/777 + quiet-while-away → attention; OSC 133/633 marks take over when present) |
+| `src/stores/workspaces.ts` | Workspace registry: one workspace per open repo (own repo/editor/terminal stores), open/close/setActive, session restore, `WorkspaceContext` + `useWorkspace`/`useRepo`/`useEditor`/`useTerminal` hooks |
+| `src/stores/repo.ts` | Per-workspace repo store factory: status/log/stashes, git mutations (return `Promise<boolean>`), watcher wiring (`init`/`dispose`), status-bar `error` |
+| `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved) |
+| `src/stores/terminal.ts` | Per-workspace terminal tab/pane UI-state factory ONLY (incl. `paneActivity` + `aggregateActivity`); never touches xterm or IPC |
+| `src/stores/ui.ts` | Global (workspace-independent) sidebar/terminal visibility and sizes |
+| `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘W ⌘1–9), welcome screen, drag resizers |
+| `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add) + active repo's branch pill and fetch |
 | `src/components/icons.tsx` | ALL shared SVG icons (16×16 stroke glyphs) — add new icons here, not inline |
 | `src/components/SourceControl.tsx` | SCM panel: stage/unstage/discard, commit (+amend, &push), stashes |
 | `src/components/GitGraph.tsx` | Hand-rolled virtualized commit list + SVG lane rail (no virtualization deps) |
@@ -27,7 +31,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/components/FileExplorer.tsx` | Lazy directory tree (per-dir cache + expanded set) |
 | `src-tauri/src/git.rs` | All git2 commands; fetch/pull/push shell out to `git` CLI so user auth works |
 | `src-tauri/src/pty.rs` | PTY sessions keyed by frontend UUID; output streamed as base64 `pty-data:<id>` events |
-| `src-tauri/src/watcher.rs` | Debounced repo watcher → `repo-changed` event `{repoPath, gitChanged}` |
+| `src-tauri/src/watcher.rs` | Debounced repo watchers (one per open repo, keyed by root) → `repo-changed` event `{repoPath, gitChanged}` |
 | `src-tauri/src/fsops.rs` | fs_read_dir / fs_read_file (5 MB cap, NUL + UTF-8 binary sniff) / atomic fs_write_file |
 
 ## IPC contract rule
@@ -68,9 +72,12 @@ cd src-tauri && cargo check     # backend typecheck
   mandatory for any git mutation on a file entry — renamed files need both the
   new and old path or the operation half-applies.
 - zustand: subscribe with narrow selectors (`useShallow` for multi-field picks);
-  whole-store destructuring re-renders on every state change. Event handlers
-  read fresh state via `useStore.getState()`. Repo mutations return booleans —
-  branch on them, never probe `getState().error` for success.
+  whole-store destructuring re-renders on every state change. Inside a
+  workspace tree, use the context hooks (`useRepo`/`useEditor`/`useTerminal`),
+  NOT a global store; event handlers read fresh state via
+  `useWorkspace().repo.getState()` etc. Global chrome (titlebar/status bar)
+  follows `useActiveWorkspace()`. Repo mutations return booleans — branch on
+  them, never probe `getState().error` for success.
 - Tauri `listen()` resolves AFTER mount: track a `disposed` flag and call the
   unlisten fn in effect cleanup (pattern: `XtermPane`, `FileExplorer`).
 - Errors: git mutations → repo store `error` (status bar, click to dismiss);
@@ -80,9 +87,17 @@ cd src-tauri && cargo check     # backend typecheck
 ## Gotchas
 
 - React StrictMode double-mounts effects in dev. PTY spawn/kill is guarded by a
-  `disposed` flag + spawn-promise-sequenced kill (`XtermPane`); the repo store
-  guards races with a module-level `generation` counter. Keep this discipline
-  for any new effectful mount.
+  `disposed` flag + spawn-promise-sequenced kill (`XtermPane`); each repo store
+  guards races with a per-store `disposed` flag; `openWorkspace` dedupes by
+  root with no await between check and set. Keep this discipline for any new
+  effectful mount.
+- ALL workspace trees stay mounted; the inactive ones are hidden with
+  `display:none` (same rule as terminal tabs) so shells, editor buffers, and
+  explorer state survive switching — never key a workspace's subtree on the
+  active path.
+- `repo-changed` events are emitted for EVERY watched repo: each `listen`er
+  must filter by `payload.repoPath` (repo store, `FileExplorer`, `Editor`,
+  `DiffViewer`) or it will react to other workspaces' changes.
 - WKWebView: `window.alert/confirm/prompt` are NO-OPS — always use
   `@tauri-apps/plugin-dialog`. Vite build target is `safari16`; avoid newer
   JS/CSS features than that.
@@ -94,6 +109,18 @@ cd src-tauri && cargo check     # backend typecheck
   edits) and a full status+log+stash refresh (HEAD/index/refs changed).
 - Inactive terminal tabs stay mounted with `display:none` so shells keep
   running and xterm buffers survive — never unmount `XtermPane` to hide it.
+  On reveal, `XtermPane`'s ResizeObserver refits + `term.refresh()`es
+  IMMEDIATELY (no debounce) — xterm's renderer is paused while hidden and the
+  WebGL canvas can come back blank, so a debounced refit reads as flicker.
+- `pty.rs` sets `TERM_PROGRAM=ghostty` on purpose: agent CLIs (Claude Code)
+  only emit OSC 9/777 notification sequences for a recognized terminal, and
+  `terminalActivity.ts` turns those into needs-attention tab indicators —
+  don't "fix" the masquerade away. Known cost: TERM_PROGRAM-sniffing image
+  CLIs (chafa, yazi) may emit Kitty graphics that xterm.js silently drops.
+- NEVER `fit.fit()` a hidden (display:none) xterm host: xterm 6 measures
+  glyphs via OffscreenCanvas even unrendered, so FitAddon doesn't bail — it
+  resizes the terminal+PTY to a bogus ~10×5 grid. Guard every fit path with
+  `host.offsetParent !== null` (mount fit, debounced fit, reveal fit).
 - `fs_read_file` truncates files >5 MB (editor becomes read-only); binary =
   NUL in the first 8 KB **or invalid UTF-8** (we refuse to lossy-decode: a
   lossy round-trip through the editor would corrupt the file on save).

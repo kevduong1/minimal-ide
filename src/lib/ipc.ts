@@ -236,12 +236,14 @@ export interface RepoChanged {
 /**
  * Starts a debounced recursive watcher over the repo workdir (+ the real git
  * dir, including linked worktrees). Emits "repo-changed" with a RepoChanged
- * payload. Watching a new repo replaces the previous watch.
+ * payload. One watch per repo root; re-watching a root replaces its watcher.
+ * Listeners receive events for EVERY watched repo — filter by `repoPath`.
  */
 export const watchRepo = (repoPath: string): Promise<void> =>
   invoke("watch_repo", { repoPath });
 
-export const unwatchRepo = (): Promise<void> => invoke("unwatch_repo");
+export const unwatchRepo = (repoPath: string): Promise<void> =>
+  invoke("unwatch_repo", { repoPath });
 
 export const onRepoChanged = (
   cb: (change: RepoChanged) => void,

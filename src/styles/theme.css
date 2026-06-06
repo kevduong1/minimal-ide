@@ -209,3 +209,23 @@ button {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* terminal activity indicators (terminal tab strip + titlebar workspace tabs) */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes attention-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.activity-busy {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+.activity-attention {
+  color: var(--warning);
+  animation: attention-pulse 1.6s ease-in-out infinite;
+}

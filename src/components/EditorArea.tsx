@@ -5,7 +5,8 @@
  * they stay out of the initial bundle.
  */
 import { lazy, Suspense, useEffect, useRef } from "react";
-import { closeTabSafely, useEditorStore, type Tab } from "../stores/editor";
+import { closeTabSafely, type Tab } from "../stores/editor";
+import { useEditor, useWorkspace } from "../stores/workspaces";
 import { statusColor } from "../lib/status";
 import { IcBranch, IcClose, IcDiff, IcFile } from "./icons";
 import "./EditorArea.css";
@@ -22,7 +23,8 @@ function TabItem({
   active: boolean;
   dirty: boolean;
 }) {
-  const setActive = useEditorStore((s) => s.setActive);
+  const ws = useWorkspace();
+  const setActive = useEditor((s) => s.setActive);
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,7 +49,7 @@ function TabItem({
       onAuxClick={(e) => {
         if (e.button === 1) {
           e.preventDefault();
-          void closeTabSafely(tab.id);
+          void closeTabSafely(ws.editor, tab.id);
         }
       }}
     >
@@ -66,7 +68,7 @@ function TabItem({
           title="Close"
           onClick={(e) => {
             e.stopPropagation();
-            void closeTabSafely(tab.id);
+            void closeTabSafely(ws.editor, tab.id);
           }}
         >
           <IcClose />
@@ -100,9 +102,9 @@ function EmptyState() {
 }
 
 export default function EditorArea() {
-  const tabs = useEditorStore((s) => s.tabs);
-  const activeTabId = useEditorStore((s) => s.activeTabId);
-  const dirty = useEditorStore((s) => s.dirty);
+  const tabs = useEditor((s) => s.tabs);
+  const activeTabId = useEditor((s) => s.activeTabId);
+  const dirty = useEditor((s) => s.dirty);
 
   const active = tabs.find((t) => t.id === activeTabId) ?? null;
 

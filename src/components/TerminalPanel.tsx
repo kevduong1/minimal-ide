@@ -13,10 +13,16 @@ import {
   ptySpawn,
   ptyWrite,
 } from "../lib/ipc";
-import { useTerminalStore, type TerminalTab } from "../stores/terminal";
-import { useRepoStore } from "../stores/repo";
-import { useUiStore } from "../stores/ui";
+import { aggregateActivity, type TerminalTab } from "../stores/terminal";
 import {
+  useTerminal,
+  useWorkspace,
+  useWorkspacesStore,
+} from "../stores/workspaces";
+import { useUiStore } from "../stores/ui";
+import { trackActivity, type ActivityTracker } from "../lib/terminalActivity";
+import {
+  ActivityGlyph,
   IcChevronDown,
   IcClose,
   IcPlus,
@@ -54,6 +60,14 @@ const XTERM_THEME = {
   brightWhite: "#ffffff",
 };
 
+/**
+ * cols/rows of the most recent pane resize, used to seed terminals that
+ * mount hidden (session restore opens background workspaces as display:none)
+ * so their PTY doesn't start at xterm's 80×24 default and reflow the prompt
+ * on first reveal. All panes share the same global panel geometry.
+ */
+let lastFitDims: { cols: number; rows: number } | null = null;
+
 interface XtermPaneProps {
   tabId: string;
   paneId: string;
@@ -65,8 +79,12 @@ const XtermPane = memo(function XtermPane({
   paneId,
   focused,
 }: XtermPaneProps) {
+  // The workspace object (and its terminal store) is stable for the lifetime
+  // of the workspace, so capturing it in the one-shot effect is safe.
+  const ws = useWorkspace();
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const trackerRef = useRef<ActivityTracker | null>(null);
 
   // tabId/paneId are stable for the lifetime of a mounted pane (keyed by
   // paneId), so a one-shot effect is correct here.
@@ -80,6 +98,9 @@ const XtermPane = memo(function XtermPane({
     let unExit: UnlistenFn | null = null;
 
     const term = new Terminal({
+      // A pane mounting into a hidden tree can't be measured yet; seed it
+      // with the last known pane geometry instead of xterm's 80×24 default.
+      ...(host.offsetParent === null && lastFitDims ? lastFitDims : null),
       fontFamily: "SF Mono, ui-monospace, Menlo, monospace",
       fontSize: 12,
       lineHeight: 1.25,
@@ -104,7 +125,15 @@ const XtermPane = memo(function XtermPane({
       // WebGL unavailable — xterm falls back to its default renderer.
     }
 
-    fit.fit();
+    // NEVER fit a hidden host: xterm 6 measures glyphs via OffscreenCanvas
+    // even when unrendered, so FitAddon doesn't bail — it sizes the terminal
+    // from a bogus computed height (~10×5). The seeded dims cover this case.
+    if (host.offsetParent !== null) {
+      fit.fit();
+      // Seed here too (onResize isn't subscribed yet, and a no-change fit
+      // emits no resize event) so hidden-mounting panes can pick this up.
+      lastFitDims = { cols: term.cols, rows: term.rows };
+    }
 
     const ptyId = crypto.randomUUID();
 
@@ -112,8 +141,22 @@ const XtermPane = memo(function XtermPane({
       void ptyWrite(ptyId, data).catch(() => {});
     });
     const resizeSub = term.onResize(({ cols, rows }) => {
+      lastFitDims = { cols, rows };
       void ptyResize(ptyId, cols, rows).catch(() => {});
     });
+
+    // Busy/attention state for the tab strip and the titlebar workspace
+    // tabs. The tracker only writes to the store on actual state changes.
+    const tracker = trackActivity(
+      term,
+      () =>
+        document.hasFocus() &&
+        useUiStore.getState().terminalVisible &&
+        useWorkspacesStore.getState().activePath === ws.path &&
+        ws.terminal.getState().activeTabId === tabId,
+      (activity) => ws.terminal.getState().setPaneActivity(paneId, activity),
+    );
+    trackerRef.current = tracker;
 
     // Attach listeners BEFORE spawning so no early output is lost; guard
     // every await against unmount-before-resolve.
@@ -126,7 +169,7 @@ const XtermPane = memo(function XtermPane({
       unData = u1;
 
       const u2 = await onPtyExit(ptyId, () => {
-        useTerminalStore.getState().closePane(tabId, paneId);
+        ws.terminal.getState().closePane(tabId, paneId);
       });
       if (disposed) {
         u2();
@@ -134,10 +177,17 @@ const XtermPane = memo(function XtermPane({
       }
       unExit = u2;
 
-      const cwd = useRepoStore.getState().repoPath ?? "/";
+      const cwd = ws.path;
       try {
-        spawnPromise = ptySpawn(ptyId, cwd, term.cols, term.rows);
+        const spawnCols = term.cols;
+        const spawnRows = term.rows;
+        spawnPromise = ptySpawn(ptyId, cwd, spawnCols, spawnRows);
         await spawnPromise;
+        // A refit while the spawn was in flight lost its ptyResize
+        // ("unknown pty", swallowed) — re-sync the grids if they diverged.
+        if (!disposed && (term.cols !== spawnCols || term.rows !== spawnRows)) {
+          void ptyResize(ptyId, term.cols, term.rows).catch(() => {});
+        }
       } catch (e) {
         if (!disposed) {
           term.write(`\r\n\x1b[31mFailed to spawn shell: ${String(e)}\x1b[0m\r\n`);
@@ -145,14 +195,41 @@ const XtermPane = memo(function XtermPane({
       }
     })();
 
-    // Debounced refit whenever the pane resizes (splits added/removed, panel
-    // drag-resized, tab shown after display:none, ...).
+    // Refit when the pane resizes (splits added/removed, panel drag-resized)
+    // behind a short debounce — but handle hidden→visible transitions
+    // specially: on reveal, refit and repaint IMMEDIATELY. xterm's renderer
+    // is paused while hidden and the WebGL canvas can come back blank, so
+    // waiting out the debounce (and then for output / a cursor blink to
+    // trigger a render) reads as flicker when switching workspaces. The
+    // observer fires post-layout, so the eager path repaints on the same
+    // frame as the reveal. While hidden, never fit (see the mount-time fit).
     let fitTimer: number | null = null;
+    const clearFitTimer = () => {
+      if (fitTimer !== null) {
+        window.clearTimeout(fitTimer);
+        fitTimer = null;
+      }
+    };
+    let hidden = host.offsetParent === null;
     const ro = new ResizeObserver(() => {
-      if (fitTimer !== null) window.clearTimeout(fitTimer);
+      if (host.offsetParent === null) {
+        hidden = true;
+        clearFitTimer(); // a pending fit must not land on a hidden host
+        return;
+      }
+      const revealed = hidden;
+      hidden = false;
+      clearFitTimer();
+      // proposeDimensions() is undefined right after reveal on engines that
+      // measure glyphs via the DOM — fall through to the debounce there.
+      if (revealed && fit.proposeDimensions()) {
+        fit.fit(); // no-op when geometry is unchanged — no canvas clear
+        term.refresh(0, term.rows - 1);
+        return;
+      }
       fitTimer = window.setTimeout(() => {
         fitTimer = null;
-        fit.fit();
+        if (host.offsetParent !== null) fit.fit();
       }, 50);
     });
     ro.observe(host);
@@ -165,6 +242,12 @@ const XtermPane = memo(function XtermPane({
       unExit?.();
       dataSub.dispose();
       resizeSub.dispose();
+      tracker.dispose();
+      trackerRef.current = null;
+      // Drop any lingering indicator (no-op if the store already pruned it).
+      ws.terminal
+        .getState()
+        .setPaneActivity(paneId, { busy: false, attention: false });
       // Kill only once a dispatched spawn settles; a null spawnPromise means
       // the disposed guards above bailed before the spawn was ever sent.
       const p = spawnPromise;
@@ -179,7 +262,8 @@ const XtermPane = memo(function XtermPane({
     <div
       className={`terminal-pane ${focused ? "focused" : ""}`}
       onMouseDown={() => {
-        useTerminalStore.getState().setActivePane(tabId, paneId);
+        ws.terminal.getState().setActivePane(tabId, paneId);
+        trackerRef.current?.acknowledge();
         termRef.current?.focus();
       }}
     >
@@ -193,8 +277,11 @@ const XtermPane = memo(function XtermPane({
 // ---------------------------------------------------------------------------
 
 function TabItem({ tab, active }: { tab: TerminalTab; active: boolean }) {
-  const setActiveTab = useTerminalStore((s) => s.setActiveTab);
-  const closeTab = useTerminalStore((s) => s.closeTab);
+  const setActiveTab = useTerminal((s) => s.setActiveTab);
+  const closeTab = useTerminal((s) => s.closeTab);
+  const activity = useTerminal((s) =>
+    aggregateActivity(s.paneActivity, tab.paneIds),
+  );
 
   return (
     <div
@@ -202,7 +289,7 @@ function TabItem({ tab, active }: { tab: TerminalTab; active: boolean }) {
       onMouseDown={() => setActiveTab(tab.id)}
       title={tab.title}
     >
-      <IcTerminal />
+      <ActivityGlyph activity={activity} idle={<IcTerminal />} />
       <span className="truncate">{tab.title}</span>
       <button
         className="terminal-tab-close"
@@ -224,10 +311,11 @@ function TabItem({ tab, active }: { tab: TerminalTab; active: boolean }) {
 // ---------------------------------------------------------------------------
 
 export default function TerminalPanel() {
-  const tabs = useTerminalStore((s) => s.tabs);
-  const activeTabId = useTerminalStore((s) => s.activeTabId);
-  const newTab = useTerminalStore((s) => s.newTab);
-  const splitActivePane = useTerminalStore((s) => s.splitActivePane);
+  const ws = useWorkspace();
+  const tabs = useTerminal((s) => s.tabs);
+  const activeTabId = useTerminal((s) => s.activeTabId);
+  const newTab = useTerminal((s) => s.newTab);
+  const splitActivePane = useTerminal((s) => s.splitActivePane);
   const setTerminalVisible = useUiStore((s) => s.setTerminalVisible);
 
   // Auto-create the first terminal exactly once. The ref survives React 19
@@ -235,14 +323,15 @@ export default function TerminalPanel() {
   // user closing the last tab intentionally is not overridden.
   const autoCreated = useRef(false);
   useEffect(() => {
-    if (!autoCreated.current && useTerminalStore.getState().tabs.length === 0) {
+    if (!autoCreated.current && ws.terminal.getState().tabs.length === 0) {
       autoCreated.current = true;
-      useTerminalStore.getState().newTab();
+      ws.terminal.getState().newTab();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const killActivePane = () => {
-    const { tabs, activeTabId, closePane } = useTerminalStore.getState();
+    const { tabs, activeTabId, closePane } = ws.terminal.getState();
     const tab = tabs.find((t) => t.id === activeTabId);
     if (tab) closePane(tab.id, tab.activePaneId);
   };

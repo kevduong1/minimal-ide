@@ -13,8 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRepoStore } from "../stores/repo";
-import { useEditorStore } from "../stores/editor";
+import { useRepo, useWorkspace } from "../stores/workspaces";
 import { gitCommitFiles, type CommitFile, type RefLabel } from "../lib/ipc";
 import { statusColor } from "../lib/status";
 import { computeGraph, type GraphRow } from "../lib/graphLayout";
@@ -219,6 +218,7 @@ const FileRow = memo(function FileRow({
   top: number;
   repoPath: string;
 }) {
+  const ws = useWorkspace();
   if (!file) {
     return (
       <div className="gg-file loading" style={{ top }}>
@@ -227,7 +227,7 @@ const FileRow = memo(function FileRow({
     );
   }
   const open = () =>
-    useEditorStore.getState().openDiff({
+    ws.editor.getState().openDiff({
       repoPath,
       path: file.path,
       kind: "commit",
@@ -272,10 +272,10 @@ type Item =
   | { type: "loadmore" };
 
 export default function GitGraph() {
-  const repoPath = useRepoStore((s) => s.repoPath);
-  const commits = useRepoStore((s) => s.commits);
-  const hasMoreLog = useRepoStore((s) => s.hasMoreLog);
-  const loadMoreLog = useRepoStore((s) => s.loadMoreLog);
+  const repoPath = useRepo((s) => s.repoPath);
+  const commits = useRepo((s) => s.commits);
+  const hasMoreLog = useRepo((s) => s.hasMoreLog);
+  const loadMoreLog = useRepo((s) => s.loadMoreLog);
 
   const layout = useMemo(() => computeGraph(commits), [commits]);
 

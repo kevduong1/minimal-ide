@@ -11,28 +11,93 @@
   position: relative;
 }
 
-.titlebar-left {
+/* ----- workspace tab strip ----------------------------------------------- */
+
+.titlebar-tabs {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* thin but visible — the strip must stay reachable when it overflows */
+.titlebar-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+/* the global thumb style's 2px transparent border + content-box clip would
+   leave a 3px-high thumb with nothing to paint */
+.titlebar-tabs::-webkit-scrollbar-thumb {
+  border: 0;
+  background-clip: border-box;
 }
 
-.titlebar-repo {
+.ws-tab {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: 6px;
   font-size: 12.5px;
-  color: var(--fg);
-  min-width: 0;
-  max-width: 220px;
-}
-.titlebar-repo svg {
-  width: 14px;
-  height: 14px;
   color: var(--fg-dim);
+  cursor: default;
+  min-width: 0;
+  max-width: 200px;
   flex-shrink: 0;
 }
+.ws-tab:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.ws-tab.active {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+.ws-tab > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+/* dim only the idle glyph — this rule's (0,1,1) specificity would otherwise
+   override the .activity-busy/.activity-attention colors from theme.css */
+.ws-tab > svg:not(.activity-busy):not(.activity-attention) {
+  color: var(--fg-dim);
+}
+
+.ws-tab-dir {
+  color: var(--fg-faint);
+}
+
+.ws-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--fg-dim);
+  flex-shrink: 0;
+  visibility: hidden;
+}
+.ws-tab:hover .ws-tab-close,
+.ws-tab.active .ws-tab-close {
+  visibility: visible;
+}
+.ws-tab-close:hover {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+.ws-tab-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.ws-tab-add {
+  flex-shrink: 0;
+}
+
+/* ----- active-repo chrome ------------------------------------------------ */
 
 .titlebar-branch-pill {
   display: flex;
@@ -74,18 +139,11 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-@keyframes titlebar-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
 .titlebar-syncing svg {
-  animation: titlebar-spin 1s linear infinite;
+  /* @keyframes spin lives in theme.css */
+  animation: spin 1s linear infinite;
 }

@@ -108,6 +108,8 @@
   display: flex;
   flex-direction: row;
   height: 100%;
+  /* a transient scrollbar on reveal would re-trigger the panes' fit logic */
+  overflow: hidden;
 }
 
 .terminal-pane {
@@ -133,6 +135,14 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+/* Stock xterm.css paints .xterm-viewport #000 (a macOS native-scrollbar
+   opacity hack we don't need — we style scrollbars globally). The viewport
+   spans the whole padded host while the cell grid only covers cols×rows, so
+   that #000 bleeds through the padding + cell-rounding remainder as a black
+   outline. Let the panel background show through instead. */
+.terminal-xterm .xterm .xterm-viewport {
+  background-color: transparent;
 }
 .terminal-xterm .xterm {
   height: 100%;
