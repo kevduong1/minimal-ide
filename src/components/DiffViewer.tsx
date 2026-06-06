@@ -37,7 +37,7 @@ interface DiffData {
   lang: CmExtension | null;
 }
 
-const MODE_KEY = "minimal-ide:diff-mode";
+const MODE_KEY = "vibe-studio:diff-mode";
 
 /** Debounce for refetching the diff after a repo watcher event. */
 const REFETCH_DEBOUNCE_MS = 250;

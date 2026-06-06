@@ -98,7 +98,7 @@ function Welcome() {
 
   return (
     <div className="welcome">
-      <h1>Minimal IDE</h1>
+      <h1>Vibe Studio</h1>
       <div>Open a git repository to get started</div>
       <button className="open-btn" onClick={pickFolder}>
         Open Folder…

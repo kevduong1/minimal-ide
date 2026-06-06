@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Minimal IDE — a Tauri 2 macOS desktop app: multi-repo workspaces (titlebar tab
+Vibe Studio — a Tauri 2 macOS desktop app: multi-repo workspaces (titlebar tab
 switcher), git source control (status, staging, commit/amend/push, stashes,
 commit graph), integrated split terminals (portable-pty + xterm.js), a global
 drag-and-drop agent-terminal dock, and a CodeMirror 6 diff viewer/editor.
@@ -19,7 +19,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/terminalActivity.ts` | Per-pane busy/attention heuristics for **agent** terminals only (echo-suppressed, onset-debounced output → busy; BEL/OSC 9/777 + quiet-while-unfocused → attention; OSC 133/633 marks take over when present) |
 | `src/lib/termSession.ts` | Framework-free xterm+PTY session (attach/detach reparenting; ONLY `dispose()` kills the PTY); also hosts `XTERM_THEME` |
 | `src/lib/termSessions.ts` | Session registry for ALL dock terminals (`getOrCreateSession`/`getSession`/`disposeSession`) — sessions outlive React unmounts |
-| `src/lib/agentSessions.ts` | Agent glue on the registry: masquerade+tracker session options, `closeAgentTerminal`, `openAgentTerminal` |
+| `src/lib/agentSessions.ts` | Agent glue on the registry: masquerade+tracker session options, `closeAgentTerminal`, `openAgentTerminal` (eager session + auto-types `claude` into the fresh shell; restart respawns go via the mount path and stay plain shells) |
 | `src/lib/workspaceSessions.ts` | Workspace glue on the registry (counterpart of agentSessions): `getOrCreateWorkspaceSession`, `closeWorkspaceTerminal` |
 | `src/lib/termFileDrop.ts` | Native file drops onto terminal panes (both docks) paste shell-quoted paths: Tauri webview drag-drop events (the DOM never sees native drags) → pane hit-test → `term.paste()` (bracketed paste is how Claude Code detects image paths). Drag positions are LOGICAL px despite the PhysicalPosition type (macOS wry quirk, documented in-file) — never divide by devicePixelRatio, but DO divide by `currentZoom()` (page zoom shrinks the CSS viewport) |
 | `src/lib/zoom.ts` | Whole-app zoom (⌘+/⌘−/⌘0, App.tsx): browser-style step list applied via webview `setZoom` (WKWebView.pageZoom — layout-reflowing, so terminals refit via their ResizeObservers), localStorage-persisted, restored by `initZoom()`; `currentZoom()` feeds termFileDrop's coordinate mapping |
@@ -34,7 +34,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved), `openFile(path, at?)` + nonce-gated `reveal` request (cursor-to-line, consumed by Editor.tsx) |
 | `src/stores/search.ts` | Per-workspace search store factory (⌘⇧F state: query/toggles/results); 250 ms debounce + sequence-number stale-result guard live in the store closure |
 | `src/stores/terminal.ts` | Per-workspace terminal dock store factory (plain shells, dockTree layout, NOT persisted; never touches xterm or IPC); also exports the shared `PaneActivity`/`aggregateActivity` activity types |
-| `src/stores/agentTerminals.ts` | GLOBAL agent-terminal dock store: dockTree layout, terminal↔project bindings, deduped default titles, ephemeral live pane titles (`paneTitle`), localStorage persistence (`minimal-ide:agent-terminals`) |
+| `src/stores/agentTerminals.ts` | GLOBAL agent-terminal dock store: dockTree layout, terminal↔project bindings, deduped default titles, ephemeral live pane titles (`paneTitle`), localStorage persistence (`vibe-studio:agent-terminals`) |
 | `src/stores/ui.ts` | Global (workspace-independent) sidebar/panel visibility, sizes, panel group (`terminal`/`agent`, `useEffectivePanelGroup`), panel maximize (`panelMaximized` — cleared by hiding the panel or opening an editor tab) |
 | `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘⇧B ⌘P ⌘⇧F ⌘W ⌘1–9 ⌘±/⌘0 zoom), welcome screen |
 | `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add; double-click → inline rename; right-click → rename / copy path / project color) + active repo's branch pill and fetch |

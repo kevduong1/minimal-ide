@@ -23,8 +23,8 @@ import {
   type TerminalStore,
 } from "./terminal";
 
-const RECENT_KEY = "minimal-ide:recent-repos";
-const SESSION_KEY = "minimal-ide:workspaces";
+const RECENT_KEY = "vibe-studio:recent-repos";
+const SESSION_KEY = "vibe-studio:workspaces";
 
 export interface Workspace {
   /** Workdir root (canonical, from git_open). Doubles as the workspace id.

@@ -12,7 +12,7 @@
 import { create } from "zustand";
 import { basename } from "./path";
 
-const STORAGE_KEY = "minimal-ide:project-names";
+const STORAGE_KEY = "vibe-studio:project-names";
 /** Growth bound: oldest renames are dropped past this (names for repos not
     touched in ages revert to their basename — acceptable). */
 const MAX_NAMES = 64;

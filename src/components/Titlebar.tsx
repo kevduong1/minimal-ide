@@ -306,7 +306,7 @@ export default function Titlebar() {
       </div>
 
       {workspaces.length === 0 && (
-        <div className="titlebar-center">Minimal IDE</div>
+        <div className="titlebar-center">Vibe Studio</div>
       )}
 
       <div className="titlebar-right">

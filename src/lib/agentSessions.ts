@@ -34,14 +34,25 @@ export function closeAgentTerminal(id: string): void {
   useAgentTerminalsStore.getState().closeTerminal(id);
 }
 
+/** Typed into fresh agent terminals: a new tab exists to run an agent, so
+ *  start one. Typed (not exec'd as the PTY process) so quitting the agent
+ *  leaves a normal shell in the project root. */
+const AGENT_COMMAND = "claude";
+
 /**
- * UI-facing create. Only places the tab — the session itself is created
- * when the new tab's host mounts, which is also how persisted layouts
- * respawn their shells after a restart.
+ * UI-facing create: places the tab and queues `claude` into the new shell.
+ * The session is created eagerly (the tab's pane host only mounts on the
+ * NEXT render); its shell still spawns lazily on first attach, and sendText
+ * queues until that spawn settles (same pattern as taskRunner). Restored
+ * layouts respawn via the mount path, NOT here — a relaunch brings back
+ * plain shells, not a surprise fleet of agents.
  */
 export function openAgentTerminal(
   workspacePath: string,
   opts?: { groupId?: string },
 ): string {
-  return useAgentTerminalsStore.getState().newTerminal(workspacePath, opts);
+  const id = useAgentTerminalsStore.getState().newTerminal(workspacePath, opts);
+  const t = useAgentTerminalsStore.getState().terminals[id];
+  if (t) getOrCreateAgentSession(t).sendText(`${AGENT_COMMAND}\r`);
+  return id;
 }

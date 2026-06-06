@@ -1,24 +1,106 @@
-# Minimal IDE
+<div align="center">
+  <img src="app-icon.png" width="128" height="128" alt="Vibe Studio icon" />
 
-A minimal, fast, memory-efficient IDE for macOS. Like VSCode without all the extra stuff:
-**git source control + commit graph, integrated split terminals, and a proper diff viewer.**
+# Vibe Studio
 
-Built with [Tauri 2](https://tauri.app) — native WKWebView, no bundled Chromium — so it stays
-light on CPU and RAM.
+**The IDE for vibe coding.** Git, terminals, diffs, and a first-class dock for
+AI coding agents — in a fast, minimal, native macOS app.
+
+![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
+![Tauri 2](https://img.shields.io/badge/Tauri_2-24C8D8?logo=tauri&logoColor=white)
+![React 19](https://img.shields.io/badge/React_19-087EA4?logo=react&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-DEA584?logo=rust&logoColor=black)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
+</div>
+
+Like VS Code without all the extra stuff: source control you can see, real
+terminals, a proper diff viewer, and multi-repo workspaces built around
+agent-driven development. Built with [Tauri 2](https://tauri.app) — native
+WKWebView, no bundled Chromium — so it stays light on CPU and RAM.
 
 ## Features
 
-- **Source control** — stage / unstage / discard, commit (+ amend, commit & push), stash
-  (save / apply / pop / drop), fetch / pull / push using your existing git auth
-- **Commit graph** — colored branch lanes, branch & tag pills, click a commit to see and
-  diff its files; virtualized so huge histories stay smooth
-- **Integrated terminal** — real PTYs running your login shell, tabs + side-by-side splits,
-  WebGL-accelerated rendering (xterm.js)
-- **Diff viewer** — side-by-side or unified, syntax-highlighted, unchanged regions collapsed;
-  working-tree diffs are editable (⌘S saves)
-- **Editor & explorer** — lazy file tree, CodeMirror 6 tabs with on-demand language loading
-- **Live updates** — a debounced file watcher refreshes status/log/graph when anything
-  changes on disk (including external `git` commands)
+### 🗂 Multi-repo workspaces
+
+- Every open repo is a tab in the titlebar with its own editor, terminals,
+  search, and source control — all workspaces stay alive, so switching is
+  instant and nothing reloads
+- Jump with **⌘1–9**, double-click a tab to rename it, right-click to pick a
+  **per-project accent color** that tints the whole app
+- Session restore: your workspaces, layouts, and agent terminals come back
+  on relaunch
+
+### 🌱 Source control
+
+- Stage / unstage / discard, commit (+ amend, commit & push), stash
+  (save / apply / pop / drop), fetch / pull / push using your existing git
+  auth and credential helpers
+- **Commit graph** with colored branch lanes, branch & tag pills, and a
+  branch filter; virtualized so huge histories stay smooth
+- Click a commit to browse and diff its files; multi-select + right-click
+  for checkout, branch creation, squash, and copy-SHA
+- A debounced file watcher keeps status, log, and graph live — including
+  changes made by external `git` commands
+
+### 🤖 Agent terminal dock
+
+A global dock purpose-built for AI coding agents (Claude Code & friends):
+
+- New agent terminals **launch `claude` automatically** in the project
+  root — quit the agent and you're in a plain shell
+- Agent terminals are pinned to a **project**, not a window — they keep
+  running when their workspace closes, and clicking one jumps straight to
+  its project
+- **Busy / needs-attention indicators** surface what each agent is doing
+  across the dock, titlebar tabs, and status bar
+- Live **session-summary badges** show each agent's current topic
+- Drag & drop tabs into splits; layout persists across restarts
+- Drop a file or image from Finder onto a pane to paste its path — image
+  drops work with Claude Code out of the box
+
+### ⌨️ Terminals
+
+- Real PTYs running your login shell, with tabs, side-by-side splits, and
+  drag-and-drop layout
+- WebGL-accelerated rendering (xterm.js 6) with backpressure-aware
+  streaming, so `cat`-ing a huge file won't wedge the app
+- **⌘⇧B task runner**: VS Code-compatible `.vscode/tasks.json`, with a
+  quick-pick overlay, `${variable}` substitution, and panel reuse rules
+
+### ✍️ Editor & navigation
+
+- CodeMirror 6 tabs with on-demand language loading, unsaved-draft
+  recovery, and external-change reload with save-conflict protection
+- **⌘P quick open** — fuzzy file matching (gitignore-aware) with match
+  highlighting
+- **⌘⇧F workspace search** — parallel Rust walk with case / whole-word /
+  regex toggles; results open at the matching line
+- **⌘F find & replace** — floating VS Code-style widget in every editor
+  and diff
+- Lazy file explorer, whole-app zoom (**⌘+ / ⌘− / ⌘0**)
+
+### 🔍 Diff viewer
+
+- Side-by-side or unified, syntax-highlighted, unchanged regions collapsed
+- Working-tree diffs are **editable** — fix what you see and ⌘S saves it
+- Auto-refreshes when the repo changes underneath it
+
+## Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| ⌘ P | Quick open file |
+| ⌘ ⇧ F | Search across the workspace |
+| ⌘ F | Find / replace in the editor |
+| ⌘ ⇧ B | Run build task |
+| ⌘ ` | Toggle terminal panel |
+| ⌘ B | Toggle sidebar |
+| ⌘ 1–9 | Switch to the Nth workspace |
+| ⌘ W | Close editor tab |
+| ⌘ S | Save file / working-tree diff edit |
+| ⌘ ↩ | Commit (focus in message box) |
+| ⌘ + / ⌘ − / ⌘ 0 | Zoom in / out / reset |
 
 ## Architecture
 
@@ -26,19 +108,10 @@ light on CPU and RAM.
 |---|---|
 | Shell | Tauri 2 (Rust) |
 | Git | `git2` (libgit2); network ops shell out to `git` CLI for your ssh/credential helpers |
-| Terminals | `portable-pty` → base64 events → xterm.js 6 |
-| Watcher | `notify` (FSEvents), debounced |
+| Terminals | `portable-pty` → base64 events with ack-based flow control → xterm.js 6 |
+| Watcher | `notify` (FSEvents), debounced per repo |
+| Search & quick open | `ignore`-crate parallel worktree walks in Rust |
 | UI | React 19 + Vite, zustand, CodeMirror 6, `@codemirror/merge` |
-
-## Keyboard shortcuts
-
-| Keys | Action |
-|---|---|
-| ⌘ ` | Toggle terminal panel |
-| ⌘ B | Toggle sidebar |
-| ⌘ W | Close tab |
-| ⌘ S | Save file / working-tree diff edit |
-| ⌘ ↩ | Commit (focus in message box) |
 
 ## Development
 
@@ -55,9 +128,9 @@ build, then copy the bundle into `/Applications`.
 
 ```sh
 pnpm tauri build
-rm -rf "/Applications/Minimal IDE.app" && ditto \
-  "src-tauri/target/release/bundle/macos/Minimal IDE.app" \
-  "/Applications/Minimal IDE.app"
+rm -rf "/Applications/Vibe Studio.app" && ditto \
+  "src-tauri/target/release/bundle/macos/Vibe Studio.app" \
+  "/Applications/Vibe Studio.app"
 ```
 
 Notes:
@@ -72,3 +145,7 @@ Notes:
   separate state.
 - No Gatekeeper friction: locally built apps aren't quarantined (that only
   applies to downloads).
+
+## License
+
+[MIT](LICENSE) © Kevin Duong
