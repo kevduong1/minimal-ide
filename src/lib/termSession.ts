@@ -116,6 +116,8 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
   // fixes), which is always loaded via TerminalPanel's static import.
   const el = document.createElement("div");
   el.className = "terminal-xterm";
+  // Lets lib/termFileDrop resolve a native file drop to its session.
+  el.dataset.sessionId = id;
 
   let disposed = false;
   let spawnStarted = false;

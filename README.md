@@ -47,3 +47,28 @@ pnpm install
 pnpm tauri dev      # run the app in dev mode
 pnpm tauri build    # produce .app / .dmg in src-tauri/target/release/bundle
 ```
+
+## Installing / updating the release build
+
+There's no auto-updater — installing and updating are the same operation:
+build, then copy the bundle into `/Applications`.
+
+```sh
+pnpm tauri build
+rm -rf "/Applications/Minimal IDE.app" && ditto \
+  "src-tauri/target/release/bundle/macos/Minimal IDE.app" \
+  "/Applications/Minimal IDE.app"
+```
+
+Notes:
+
+- **Quit the app first** when updating a running install.
+- The `rm -rf` matters: `ditto` *merges* into an existing bundle, so copying
+  over an old install can leave stale files behind if something was renamed
+  or removed between builds. Deleting first guarantees a clean bundle.
+- Settings survive updates — persisted state (workspaces, terminal layouts,
+  project colors) lives in WebKit storage under `~/Library/` keyed by bundle
+  id, not inside the .app. The dev build (`pnpm tauri dev`) keeps its own
+  separate state.
+- No Gatekeeper friction: locally built apps aren't quarantined (that only
+  applies to downloads).

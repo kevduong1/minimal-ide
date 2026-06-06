@@ -12,6 +12,7 @@ import {
 import { useUiStore } from "./stores/ui";
 import { closeTabSafely } from "./stores/editor";
 import { useProjectColorVar } from "./lib/projectColors";
+import { listenTermFileDrops } from "./lib/termFileDrop";
 import { loadTasks, sortForPicker, type TaskDef } from "./lib/tasks";
 import { runTask } from "./lib/taskRunner";
 import TaskPicker from "./components/TaskPicker";
@@ -167,6 +168,10 @@ export default function App() {
     sessionRestored = true;
     void restoreSession();
   }, []);
+
+  // Native file drops onto terminal panes paste the shell-quoted paths
+  // (image attachments for agent CLIs, plain paths for shells).
+  useEffect(() => listenTermFileDrops(), []);
 
   const togglePanel = useUiStore((s) => s.togglePanel);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);

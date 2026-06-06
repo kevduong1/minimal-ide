@@ -154,7 +154,8 @@
    geometry is shared here; flavor CSS (AgentDock.css .active-project) owns
    its own shadow colors. */
 .dock-pane.focused::after,
-.dock-pane.active-project::after {
+.dock-pane.active-project::after,
+.dock-pane.file-drop-target::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -163,6 +164,13 @@
 }
 /* Active tab of the dock's active group. */
 .dock-pane.focused::after {
+  box-shadow: inset 0 0 0 1px var(--accent-muted);
+}
+/* Native file drag hovering this pane (lib/termFileDrop) — same look as the
+   tab-drag .dock-drop-overlay. A flavor ring (.active-project, loaded later)
+   may win the box-shadow; the background tint is the load-bearing cue. */
+.dock-pane.file-drop-target::after {
+  background: var(--bg-selected);
   box-shadow: inset 0 0 0 1px var(--accent-muted);
 }
 

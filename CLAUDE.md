@@ -21,6 +21,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/termSessions.ts` | Session registry for ALL dock terminals (`getOrCreateSession`/`getSession`/`disposeSession`) — sessions outlive React unmounts |
 | `src/lib/agentSessions.ts` | Agent glue on the registry: masquerade+tracker session options, `closeAgentTerminal`, `openAgentTerminal` |
 | `src/lib/workspaceSessions.ts` | Workspace glue on the registry (counterpart of agentSessions): `getOrCreateWorkspaceSession`, `closeWorkspaceTerminal` |
+| `src/lib/termFileDrop.ts` | Native file drops onto terminal panes (both docks) paste shell-quoted paths: Tauri webview drag-drop events (the DOM never sees native drags) → pane hit-test → `term.paste()` (bracketed paste is how Claude Code detects image paths). Drag positions are LOGICAL px despite the PhysicalPosition type (macOS wry quirk, documented in-file) — never divide by devicePixelRatio |
 | `src/lib/tasks.ts` | VS Code-compatible `.vscode/tasks.json` model: JSONC parse, `${var}` substitution, shell command-line assembly (shell/process types; `osx` override always merged; re-read on every use, no watcher) |
 | `src/lib/taskRunner.ts` | Task execution glue: types the assembled command into a workspace dock terminal (reused per `presentation.panel` shared/dedicated/new; ^C first on reuse), reveals per `presentation.reveal` |
 | `src/lib/dockTree.ts` | Pure dock layout-tree model shared by both docks: split/group types, `normalize()` invariants, move/split/resize state ops, persistence sanitizer |

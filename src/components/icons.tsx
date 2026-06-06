@@ -4,6 +4,11 @@
  * `Svg` provides the common 16x16 stroked frame; icon components forward all
  * SVG props, so callers can pass className / style / width etc. Sizing is
  * intentionally NOT hardcoded here — it comes from CSS at the call sites.
+ *
+ * Optical size: glyph ink should span ~10-13 of the 16 viewBox units (like
+ * VS Code's codicons) — under-filled artwork reads as a mismatched, tiny
+ * icon next to its siblings. Exceptions: inherently narrow glyphs keep
+ * their natural aspect (chevrons, IcFile) and IcDot is small by design.
  */
 import type { ReactNode, SVGProps } from "react";
 
@@ -63,14 +68,14 @@ export const IcSync = (props: IconProps) => (
 );
 export const IcPull = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M8 2.5v10" />
-    <path d="M3.5 8.5 8 13l4.5-4.5" />
+    <path d="M8 1.75v11.5" />
+    <path d="M2.75 8.5 8 13.75l5.25-5.25" />
   </Svg>
 );
 export const IcPush = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M8 13.5v-10" />
-    <path d="M3.5 7.5 8 3l4.5 4.5" />
+    <path d="M8 14.25v-11.5" />
+    <path d="M2.75 7.5 8 2.25l5.25 5.25" />
   </Svg>
 );
 export const IcCheck = (props: IconProps) => (
@@ -80,8 +85,8 @@ export const IcCheck = (props: IconProps) => (
 );
 export const IcDiscard = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M3 7.5h6.5a3.25 3.25 0 0 1 0 6.5H6" />
-    <path d="M5.5 5 3 7.5 5.5 10" />
+    <path d="M2.5 6h7.75a3.75 3.75 0 0 1 0 7.5H6.5" />
+    <path d="M5.25 3.25 2.5 6l2.75 2.75" />
   </Svg>
 );
 export const IcBox = (props: IconProps) => (
@@ -209,40 +214,40 @@ export const IcReplaceAll = (props: IconProps) => (
 
 export const IcClose = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" />
+    <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
   </Svg>
 );
 export const IcChevronRight = (props: IconProps) => (
   <Svg {...props}>
-    <path d="m6 3.5 4.5 4.5L6 12.5" />
+    <path d="m5.7 3 5 5-5 5" />
   </Svg>
 );
 export const IcChevronDown = (props: IconProps) => (
   <Svg {...props}>
-    <path d="m3.5 6 4.5 4.5L12.5 6" />
+    <path d="m3 5.7 5 5 5-5" />
   </Svg>
 );
 /* double chevrons: bottom-panel maximize / restore */
 export const IcChevronsUp = (props: IconProps) => (
   <Svg {...props}>
-    <path d="m3.5 8 4.5-4.5L12.5 8" />
-    <path d="m3.5 13 4.5-4.5L12.5 13" />
+    <path d="m3 8.4 5-5 5 5" />
+    <path d="m3 13.4 5-5 5 5" />
   </Svg>
 );
 export const IcChevronsDown = (props: IconProps) => (
   <Svg {...props}>
-    <path d="m3.5 3 4.5 4.5L12.5 3" />
-    <path d="m3.5 8 4.5 4.5L12.5 8" />
+    <path d="m3 2.6 5 5 5-5" />
+    <path d="m3 7.6 5 5 5-5" />
   </Svg>
 );
 export const IcPlus = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M8 3v10M3 8h10" />
+    <path d="M8 2.5v11M2.5 8h11" />
   </Svg>
 );
 export const IcMinus = (props: IconProps) => (
   <Svg {...props}>
-    <path d="M3 8h10" />
+    <path d="M2.5 8h11" />
   </Svg>
 );
 export const IcTrash = (props: IconProps) => (
