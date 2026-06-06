@@ -11,7 +11,7 @@ import {
 } from "./stores/workspaces";
 import { useUiStore } from "./stores/ui";
 import { closeTabSafely } from "./stores/editor";
-import { projectColorVar } from "./lib/projectColors";
+import { useProjectColorVar } from "./lib/projectColors";
 import { loadTasks, sortForPicker, type TaskDef } from "./lib/tasks";
 import { runTask } from "./lib/taskRunner";
 import TaskPicker from "./components/TaskPicker";
@@ -263,8 +263,9 @@ export default function App() {
 
   // The whole accent family (commit button, rings, selections — derived from
   // --accent via color-mix in theme.css) follows the active project's color.
-  const accentStyle = activePath
-    ? ({ "--accent": projectColorVar(activePath) } as CSSProperties)
+  const accentVar = useProjectColorVar(activePath);
+  const accentStyle = accentVar
+    ? ({ "--accent": accentVar } as CSSProperties)
     : undefined;
 
   return (

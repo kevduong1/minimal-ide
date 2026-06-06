@@ -14,7 +14,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +25,7 @@ import { useRepo, useWorkspace } from "../stores/workspaces";
 import { gitCommitFiles, type CommitFile, type RefLabel } from "../lib/ipc";
 import { statusColor } from "../lib/status";
 import { computeGraph, type GraphRow } from "../lib/graphLayout";
+import { ContextMenu } from "./ContextMenu";
 import { IcBranch, IcRemote, IcTag } from "./icons";
 import "./GitGraph.css";
 
@@ -75,57 +75,8 @@ async function copyText(text: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Context menu + create-branch popover (fixed-position overlays)
+// Create-branch popover (fixed-position overlay; menu = shared ContextMenu)
 // ---------------------------------------------------------------------------
-
-function ContextMenu({
-  x,
-  y,
-  onClose,
-  children,
-}: {
-  x: number;
-  y: number;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
-
-  // clamp into the viewport once the real size is known (pre-paint)
-  useLayoutEffect(() => {
-    const r = ref.current?.getBoundingClientRect();
-    if (!r) return;
-    setPos({
-      left: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)),
-      top: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)),
-    });
-  }, [x, y]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <>
-      <div
-        className="gg-menu-backdrop"
-        onMouseDown={onClose}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div ref={ref} className="gg-menu" style={pos}>
-        {children}
-      </div>
-    </>
-  );
-}
 
 function BranchPopover({
   x,
@@ -171,7 +122,7 @@ function BranchPopover({
 
   return (
     <>
-      <div className="gg-menu-backdrop" onMouseDown={onClose} />
+      <div className="ctx-menu-backdrop" onMouseDown={onClose} />
       <div
         className="gg-popover"
         style={{
@@ -783,7 +734,7 @@ export default function GitGraph() {
       >
         Create Branch Here…
       </button>,
-      <div key="s1" className="gg-menu-sep" />,
+      <div key="s1" className="ctx-menu-sep" />,
     );
     if (target.length >= 2) {
       const reason = squashCheck(target);
@@ -823,7 +774,7 @@ export default function GitGraph() {
       );
     }
     items.push(
-      <div key="s2" className="gg-menu-sep" />,
+      <div key="s2" className="ctx-menu-sep" />,
       <button
         key="copy"
         onClick={() => {

@@ -1,4 +1,9 @@
-import { useEffect, useRef } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useStore } from "zustand";
 import { open as openDialog, message } from "@tauri-apps/plugin-dialog";
 import {
@@ -10,7 +15,13 @@ import {
   selectWorkspaceActivity,
   useAgentTerminalsStore,
 } from "../stores/agentTerminals";
-import { projectColorVar } from "../lib/projectColors";
+import {
+  paletteColor,
+  PROJECT_COLOR_NAMES,
+  setProjectColorIndex,
+  useProjectColorIndex,
+} from "../lib/projectColors";
+import { ContextMenu } from "./ContextMenu";
 import {
   ActivityGlyph,
   IcBranch,
@@ -27,14 +38,50 @@ const parentDir = (path: string): string => {
   return parts.length > 1 ? parts[parts.length - 2] : "";
 };
 
+/** Right-click menu for a workspace tab: pick the project's accent color. */
+function ProjectColorMenu({
+  path,
+  x,
+  y,
+  onClose,
+}: {
+  path: string;
+  x: number;
+  y: number;
+  onClose: () => void;
+}) {
+  const colorIndex = useProjectColorIndex(path);
+  return (
+    <ContextMenu x={x} y={y} onClose={onClose}>
+      <div className="ws-color-label">Project Color</div>
+      <div className="ws-color-row">
+        {PROJECT_COLOR_NAMES.map((name, i) => (
+          <button
+            key={name}
+            className={`ws-color-swatch ${i === colorIndex ? "selected" : ""}`}
+            title={name}
+            style={{ background: paletteColor(i) }}
+            onClick={() => {
+              setProjectColorIndex(path, i);
+              onClose();
+            }}
+          />
+        ))}
+      </div>
+    </ContextMenu>
+  );
+}
+
 function WorkspaceTab({
   ws,
   active,
   ambiguous,
+  onContext,
 }: {
   ws: Workspace;
   active: boolean;
   ambiguous: boolean;
+  onContext: (path: string, e: ReactMouseEvent) => void;
 }) {
   const setActive = useWorkspacesStore((s) => s.setActive);
   const closeWorkspace = useWorkspacesStore((s) => s.closeWorkspace);
@@ -45,6 +92,7 @@ function WorkspaceTab({
     selectWorkspaceActivity(s, ws.path),
   );
   const ref = useRef<HTMLDivElement | null>(null);
+  const colorIndex = useProjectColorIndex(ws.path);
 
   // keep the active tab reachable when the strip overflows (⌘1–9, restore)
   useEffect(() => {
@@ -67,13 +115,14 @@ function WorkspaceTab({
           void closeWorkspace(ws.path);
         }
       }}
+      onContextMenu={(e) => onContext(ws.path, e)}
     >
       {/* Idle glyph tinted in the project's color (identity carrier); the
           busy/attention glyphs keep their semantic colors. The inline style
           outranks Titlebar.css's .ws-tab > svg fg-dim rule. */}
       <ActivityGlyph
         activity={activity}
-        idle={<IcFolder style={{ color: projectColorVar(ws.path) }} />}
+        idle={<IcFolder style={{ color: paletteColor(colorIndex) }} />}
       />
       <span className="truncate">
         {ws.name}
@@ -131,6 +180,13 @@ export default function Titlebar() {
   const activePath = useWorkspacesStore((s) => s.activePath);
   const openWorkspace = useWorkspacesStore((s) => s.openWorkspace);
   const active = useActiveWorkspace();
+  // Rendered as a sibling of the tab strip (not inside the tab) so backdrop
+  // and swatch clicks don't bubble into the tab's activate-on-mousedown.
+  const [colorMenu, setColorMenu] = useState<{
+    path: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const pickFolder = async () => {
     const dir = await openDialog({ directory: true, multiple: false });
@@ -156,6 +212,10 @@ export default function Titlebar() {
             ws={ws}
             active={ws.path === activePath}
             ambiguous={(nameCounts.get(ws.name) ?? 0) > 1}
+            onContext={(path, e) => {
+              e.preventDefault();
+              setColorMenu({ path, x: e.clientX, y: e.clientY });
+            }}
           />
         ))}
         <button
@@ -174,6 +234,15 @@ export default function Titlebar() {
       <div className="titlebar-right">
         {active && <ActiveRepoControls ws={active} />}
       </div>
+
+      {colorMenu && (
+        <ProjectColorMenu
+          path={colorMenu.path}
+          x={colorMenu.x}
+          y={colorMenu.y}
+          onClose={() => setColorMenu(null)}
+        />
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/tasks.ts` | VS Code-compatible `.vscode/tasks.json` model: JSONC parse, `${var}` substitution, shell command-line assembly (shell/process types; `osx` override always merged; re-read on every use, no watcher) |
 | `src/lib/taskRunner.ts` | Task execution glue: types the assembled command into a workspace dock terminal (reused per `presentation.panel` shared/dedicated/new; ^C first on reuse), reveals per `presentation.reveal` |
 | `src/lib/dockTree.ts` | Pure dock layout-tree model shared by both docks: split/group types, `normalize()` invariants, move/split/resize state ops, persistence sanitizer |
-| `src/lib/projectColors.ts` | Stable per-project palette-index assignment (`projectColorIndex`/`projectColorVar`, localStorage-persisted) — feeds tab/badge tints and the app-wide `--accent` override |
+| `src/lib/projectColors.ts` | Per-project palette-index assignment (auto on first ask; user-set via `setProjectColorIndex`, localStorage-persisted) — render through the reactive `useProjectColorIndex`/`useProjectColorVar` hooks; feeds tab/badge tints and the app-wide `--accent` override |
 | `src/stores/workspaces.ts` | Workspace registry: one workspace per open repo (own repo/editor/terminal/search stores), open/close/setActive, session restore, `switchToProject` (agent-terminal navigation), `WorkspaceContext` + `useWorkspace`/`useRepo`/`useEditor`/`useTerminal`/`useSearch` hooks |
 | `src/stores/repo.ts` | Per-workspace repo store factory: status/log/stashes, git mutations (return `Promise<boolean>`), log branch filter (`logFilter`/`setLogFilter`), watcher wiring (`init`/`dispose`), status-bar `error` |
 | `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved), `openFile(path, at?)` + nonce-gated `reveal` request (cursor-to-line, consumed by Editor.tsx) |
@@ -33,7 +33,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/stores/agentTerminals.ts` | GLOBAL agent-terminal dock store: dockTree layout, terminal↔project bindings, deduped default titles, localStorage persistence (`minimal-ide:agent-terminals`) |
 | `src/stores/ui.ts` | Global (workspace-independent) sidebar/panel visibility, sizes, panel group (`terminal`/`agent`, `useEffectivePanelGroup`), panel maximize (`panelMaximized` — cleared by hiding the panel or opening an editor tab) |
 | `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘⇧B ⌘P ⌘⇧F ⌘W ⌘1–9), welcome screen |
-| `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add) + active repo's branch pill and fetch |
+| `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add; right-click → project color picker) + active repo's branch pill and fetch |
 | `src/components/icons.tsx` | ALL shared SVG icons (16×16 stroke glyphs) — add new icons here, not inline |
 | `src/components/SourceControl.tsx` | SCM panel: stage/unstage/discard, commit (+amend, &push), stashes, commit-graph branch filter dropdown |
 | `src/components/GitGraph.tsx` | Hand-rolled virtualized commit list + SVG lane rail (no virtualization deps); ⌘/shift multi-select + right-click menu (checkout, create branch, squash, copy SHA) |
@@ -48,6 +48,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/components/SearchPanel.tsx` | ⌘⇧F sidebar search view: query + case/word/regex toggles, per-file collapsible result groups, click opens the file at the match line (`openFile(path, at)`) |
 | `src/components/AgentDock.tsx` | Agent flavor of Dock: masquerade/tracked sessions, project badge overlay (rename shares the tab's title), active-project highlight ring, click-to-switch project, disconnected ⊘ |
 | `src/components/Resizer.tsx` | Generic drag-to-resize handle (sidebar, panel, dock splits) |
+| `src/components/ContextMenu.tsx` | Shared fixed-position context menu (viewport clamp, backdrop/Escape close) — GitGraph commit actions, Titlebar color picker |
 | `src/components/FileExplorer.tsx` | Lazy directory tree (per-dir cache + expanded set) |
 | `src-tauri/src/git.rs` | All git2 commands; fetch/pull/push/checkout/branch/squash-rebase shell out to `git` CLI so user auth + safety checks work |
 | `src-tauri/src/pty.rs` | PTY sessions keyed by frontend UUID; output streamed as base64 `pty-data:<id>` events with ack-based flow control (`pty_ack`, reader parks above 1 MiB unacked); kill = SIGHUP → 500 ms → SIGKILL process group |

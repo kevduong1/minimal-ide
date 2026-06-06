@@ -97,6 +97,34 @@
   flex-shrink: 0;
 }
 
+/* ----- project color picker (tab context menu) --------------------------- */
+
+.ws-color-label {
+  padding: 3px 8px 4px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+.ws-color-row {
+  display: flex;
+  gap: 6px;
+  padding: 2px 8px 6px;
+}
+.ws-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ws-color-swatch:hover {
+  transform: scale(1.2);
+}
+/* gap ring against the menu surface marks the current color */
+.ws-color-swatch.selected {
+  box-shadow:
+    0 0 0 1.5px var(--bg-overlay),
+    0 0 0 3px var(--fg-dim);
+}
+
 /* ----- active-repo chrome ------------------------------------------------ */
 
 .titlebar-branch-pill {

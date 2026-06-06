@@ -21,7 +21,7 @@ import {
   openAgentTerminal,
 } from "../lib/agentSessions";
 import { getSession } from "../lib/termSessions";
-import { projectColorVar } from "../lib/projectColors";
+import { useProjectColorVar } from "../lib/projectColors";
 import { Dock, type DockPaneProps } from "./Dock";
 import { ActivityGlyph, IcDisconnected, IcSparkle } from "./icons";
 import "./AgentDock.css";
@@ -42,6 +42,7 @@ function AgentBadge({
 }) {
   const [editing, setEditing] = useState(false);
   const cancelled = useRef(false);
+  const projectColor = useProjectColorVar(terminal.workspacePath);
 
   const commit = (value: string) => {
     // An emptied title reverts to the default (the project's basename).
@@ -91,10 +92,7 @@ function AgentBadge({
         setEditing(true);
       }}
     >
-      <span
-        className="agent-badge-dot"
-        style={{ background: projectColorVar(terminal.workspacePath) }}
-      />
+      <span className="agent-badge-dot" style={{ background: projectColor }} />
       {!connected && <IcDisconnected className="agent-badge-disconnected" />}
       <span className="truncate">{terminal.title}</span>
     </div>
@@ -155,14 +153,13 @@ function AgentTabIcon({ terminal }: { terminal: AgentTerminal }) {
   const activity = useAgentTerminalsStore((s) =>
     aggregateActivity(s.paneActivity, [terminal.id]),
   );
+  const projectColor = useProjectColorVar(terminal.workspacePath);
   // Idle sparkle tinted in the project's color (matches the titlebar tab and
   // badge dot); busy/attention glyphs keep their semantic colors.
   return (
     <ActivityGlyph
       activity={activity}
-      idle={
-        <IcSparkle style={{ color: projectColorVar(terminal.workspacePath) }} />
-      }
+      idle={<IcSparkle style={{ color: projectColor }} />}
     />
   );
 }
