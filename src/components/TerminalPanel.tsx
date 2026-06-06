@@ -8,6 +8,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   onPtyData,
   onPtyExit,
+  ptyAck,
   ptyKill,
   ptyResize,
   ptySpawn,
@@ -26,6 +27,7 @@ import {
   IcChevronDown,
   IcClose,
   IcPlus,
+  IcSparkle,
   IcSplit,
   IcTerminal,
   IcTrash,
@@ -68,16 +70,26 @@ const XTERM_THEME = {
  */
 let lastFitDims: { cols: number; rows: number } | null = null;
 
+/**
+ * A shell exiting non-zero this soon after spawn is treated as "failed to
+ * start" (bad $SHELL, broken dotfiles): the pane stays open showing the exit
+ * code (and whatever the shell printed) instead of flashing and vanishing.
+ */
+const EARLY_EXIT_MS = 5000;
+
 interface XtermPaneProps {
   tabId: string;
   paneId: string;
   focused: boolean;
+  /** Agent panes run the activity tracker + TERM_PROGRAM masquerade. */
+  agent: boolean;
 }
 
 const XtermPane = memo(function XtermPane({
   tabId,
   paneId,
   focused,
+  agent,
 }: XtermPaneProps) {
   // The workspace object (and its terminal store) is stable for the lifetime
   // of the workspace, so capturing it in the one-shot effect is safe.
@@ -87,7 +99,8 @@ const XtermPane = memo(function XtermPane({
   const trackerRef = useRef<ActivityTracker | null>(null);
 
   // tabId/paneId are stable for the lifetime of a mounted pane (keyed by
-  // paneId), so a one-shot effect is correct here.
+  // paneId) and a tab's kind (agent) never changes, so a one-shot effect is
+  // correct here.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -125,6 +138,14 @@ const XtermPane = memo(function XtermPane({
       // WebGL unavailable — xterm falls back to its default renderer.
     }
 
+    // Only a tab's lone pane may seed lastFitDims: split panes fit to a
+    // fraction of the panel width and would poison the seed (hidden-mounted
+    // panes spawning half-width PTY grids).
+    const soloPane = () => {
+      const tab = ws.terminal.getState().tabs.find((t) => t.id === tabId);
+      return !tab || tab.paneIds.length === 1;
+    };
+
     // NEVER fit a hidden host: xterm 6 measures glyphs via OffscreenCanvas
     // even when unrendered, so FitAddon doesn't bail — it sizes the terminal
     // from a bogus computed height (~10×5). The seeded dims cover this case.
@@ -132,7 +153,7 @@ const XtermPane = memo(function XtermPane({
       fit.fit();
       // Seed here too (onResize isn't subscribed yet, and a no-change fit
       // emits no resize event) so hidden-mounting panes can pick this up.
-      lastFitDims = { cols: term.cols, rows: term.rows };
+      if (soloPane()) lastFitDims = { cols: term.cols, rows: term.rows };
     }
 
     const ptyId = crypto.randomUUID();
@@ -141,34 +162,57 @@ const XtermPane = memo(function XtermPane({
       void ptyWrite(ptyId, data).catch(() => {});
     });
     const resizeSub = term.onResize(({ cols, rows }) => {
-      lastFitDims = { cols, rows };
+      if (soloPane()) lastFitDims = { cols, rows };
       void ptyResize(ptyId, cols, rows).catch(() => {});
     });
 
     // Busy/attention state for the tab strip and the titlebar workspace
-    // tabs. The tracker only writes to the store on actual state changes.
-    const tracker = trackActivity(
-      term,
-      () =>
-        document.hasFocus() &&
-        useUiStore.getState().terminalVisible &&
-        useWorkspacesStore.getState().activePath === ws.path &&
-        ws.terminal.getState().activeTabId === tabId,
-      (activity) => ws.terminal.getState().setPaneActivity(paneId, activity),
-    );
+    // tabs. Agent panes only — plain panes get no tracker at all (no OSC
+    // handlers, no timers, no store writes); the tracker only writes to the
+    // store on actual state changes.
+    const tracker = agent
+      ? trackActivity(
+          term,
+          () =>
+            document.hasFocus() &&
+            useUiStore.getState().terminalVisible &&
+            useWorkspacesStore.getState().activePath === ws.path &&
+            ws.terminal.getState().activeTabId === tabId,
+          (activity) =>
+            ws.terminal.getState().setPaneActivity(paneId, activity),
+        )
+      : null;
     trackerRef.current = tracker;
 
     // Attach listeners BEFORE spawning so no early output is lost; guard
     // every await against unmount-before-resolve.
+    let spawnedAt = 0;
     void (async () => {
-      const u1 = await onPtyData(ptyId, (bytes) => term.write(bytes));
+      const u1 = await onPtyData(ptyId, (bytes) => {
+        // Ack on parse completion: the Rust reader parks once too much
+        // output is in flight, so a chatty child can't flood the webview.
+        term.write(bytes, () => void ptyAck(ptyId, bytes.length).catch(() => {}));
+      });
       if (disposed) {
         u1();
         return;
       }
       unData = u1;
 
-      const u2 = await onPtyExit(ptyId, () => {
+      const u2 = await onPtyExit(ptyId, (code) => {
+        // A shell dying non-zero right after spawn (bad $SHELL, broken
+        // dotfiles) would close the pane and destroy its own error output —
+        // keep the corpse readable instead of flashing an empty panel.
+        if (code && Date.now() - spawnedAt < EARLY_EXIT_MS) {
+          // No more output is coming: retire the tracker now so a busy
+          // indicator can't sit stuck until its 30s failsafe.
+          tracker?.dispose();
+          ws.terminal
+            .getState()
+            .setPaneActivity(paneId, { busy: false, attention: false });
+          term.write(`\r\n\x1b[31m[process exited with code ${code}]\x1b[0m\r\n`);
+          return;
+        }
         ws.terminal.getState().closePane(tabId, paneId);
       });
       if (disposed) {
@@ -181,7 +225,8 @@ const XtermPane = memo(function XtermPane({
       try {
         const spawnCols = term.cols;
         const spawnRows = term.rows;
-        spawnPromise = ptySpawn(ptyId, cwd, spawnCols, spawnRows);
+        spawnedAt = Date.now();
+        spawnPromise = ptySpawn(ptyId, cwd, spawnCols, spawnRows, agent);
         await spawnPromise;
         // A refit while the spawn was in flight lost its ptyResize
         // ("unknown pty", swallowed) — re-sync the grids if they diverged.
@@ -242,12 +287,14 @@ const XtermPane = memo(function XtermPane({
       unExit?.();
       dataSub.dispose();
       resizeSub.dispose();
-      tracker.dispose();
-      trackerRef.current = null;
-      // Drop any lingering indicator (no-op if the store already pruned it).
-      ws.terminal
-        .getState()
-        .setPaneActivity(paneId, { busy: false, attention: false });
+      if (tracker) {
+        tracker.dispose();
+        trackerRef.current = null;
+        // Drop any lingering indicator (no-op if the store already pruned it).
+        ws.terminal
+          .getState()
+          .setPaneActivity(paneId, { busy: false, attention: false });
+      }
       // Kill only once a dispatched spawn settles; a null spawnPromise means
       // the disposed guards above bailed before the spawn was ever sent.
       const p = spawnPromise;
@@ -289,7 +336,10 @@ function TabItem({ tab, active }: { tab: TerminalTab; active: boolean }) {
       onMouseDown={() => setActiveTab(tab.id)}
       title={tab.title}
     >
-      <ActivityGlyph activity={activity} idle={<IcTerminal />} />
+      <ActivityGlyph
+        activity={activity}
+        idle={tab.kind === "agent" ? <IcSparkle /> : <IcTerminal />}
+      />
       <span className="truncate">{tab.title}</span>
       <button
         className="terminal-tab-close"
@@ -348,8 +398,19 @@ export default function TerminalPanel() {
           ))}
         </div>
         <div className="terminal-actions">
-          <button className="icon-btn" title="New Terminal" onClick={newTab}>
+          <button
+            className="icon-btn"
+            title="New Terminal"
+            onClick={() => newTab()}
+          >
             <IcPlus />
+          </button>
+          <button
+            className="icon-btn"
+            title="New Agent Terminal (busy/attention tracking)"
+            onClick={() => newTab("agent")}
+          >
+            <IcSparkle />
           </button>
           <button
             className="icon-btn"
@@ -393,6 +454,7 @@ export default function TerminalPanel() {
                     tabId={tab.id}
                     paneId={paneId}
                     focused={paneId === tab.activePaneId}
+                    agent={tab.kind === "agent"}
                   />
                 </Fragment>
               ))}
@@ -401,8 +463,11 @@ export default function TerminalPanel() {
         ) : (
           <div className="terminal-empty">
             <div className="terminal-empty-text">No terminals</div>
-            <button className="primary-btn" onClick={newTab}>
+            <button className="primary-btn" onClick={() => newTab()}>
               New Terminal
+            </button>
+            <button className="primary-btn" onClick={() => newTab("agent")}>
+              <IcSparkle /> New Agent Terminal
             </button>
           </div>
         )}

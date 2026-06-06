@@ -1,11 +1,14 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import {
+  gitCheckout,
   gitCommit,
+  gitCreateBranch,
   gitDiscard,
   gitFetch,
   gitLog,
   gitPull,
   gitPush,
+  gitSquash,
   gitStage,
   gitStashApply,
   gitStashDrop,
@@ -17,6 +20,7 @@ import {
   onRepoChanged,
   unwatchRepo,
   watchRepo,
+  type CheckoutKind,
   type CommitInfo,
   type StatusResult,
   type StashInfo,
@@ -34,6 +38,8 @@ export interface RepoState {
   status: StatusResult | null;
   commits: CommitInfo[];
   hasMoreLog: boolean;
+  /** When set, the log shows only commits reachable from this ref. */
+  logFilter: string | null;
   stashes: StashInfo[];
   /** True while a network op (fetch/pull/push) is in flight. */
   syncing: boolean;
@@ -47,12 +53,22 @@ export interface RepoState {
   /** Refresh status (+ log/stashes unless `statusOnly`). */
   refresh: (opts?: { statusOnly?: boolean }) => Promise<void>;
   loadMoreLog: () => Promise<void>;
+  /** Set (or clear, with null) the branch filter and reload the log. */
+  setLogFilter: (refName: string | null) => Promise<void>;
 
   /** Mutations return true on success (errors land in `error`). */
   stage: (paths: string[]) => Promise<boolean>;
   unstage: (paths: string[]) => Promise<boolean>;
   discard: (paths: string[]) => Promise<boolean>;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
+  checkout: (refName: string, kind: CheckoutKind) => Promise<boolean>;
+  createBranch: (
+    name: string,
+    oid: string,
+    checkout: boolean,
+  ) => Promise<boolean>;
+  /** Squash a contiguous run of current-branch commits. Rewrites history. */
+  squash: (oids: string[]) => Promise<boolean>;
 
   stashSave: (
     message: string | null,
@@ -128,6 +144,7 @@ export const createRepoStore = (root: string): RepoStore => {
       status: null,
       commits: [],
       hasMoreLog: false,
+      logFilter: null,
       stashes: [],
       syncing: false,
       error: null,
@@ -190,7 +207,7 @@ export const createRepoStore = (root: string): RepoStore => {
       },
 
       refresh: async (opts) => {
-        const { commits } = get();
+        const { commits, logFilter } = get();
         try {
           if (opts?.statusOnly) {
             const status = await gitStatus(root);
@@ -199,30 +216,84 @@ export const createRepoStore = (root: string): RepoStore => {
           }
           // keep however many commits the user has paged in (min one page)
           const limit = Math.max(commits.length, LOG_PAGE);
-          const [status, log, stashes] = await Promise.all([
+          // Status + stashes must not be held hostage by a failing log fetch:
+          // gitLog rejects BY DESIGN when the branch filter went stale (e.g.
+          // the filtered branch was deleted in a terminal), so wrap it and
+          // keep the other two flowing.
+          const [status, stashes, logRes] = await Promise.all([
             gitStatus(root),
-            gitLog(root, limit, 0),
             gitStashList(root),
+            gitLog(root, limit, 0, logFilter).then(
+              (log) => ({ ok: true as const, log }),
+              (err) => ({ ok: false as const, err }),
+            ),
           ]);
           if (disposed) return;
-          set({ status, commits: log.commits, hasMoreLog: log.hasMore, stashes });
+          // a filter change while we were fetching owns the log now
+          const filterChanged = get().logFilter !== logFilter;
+          if (logRes.ok) {
+            if (filterChanged) set({ status, stashes });
+            else
+              set({
+                status,
+                commits: logRes.log.commits,
+                hasMoreLog: logRes.log.hasMore,
+                stashes,
+              });
+            return;
+          }
+          // Log fetch failed. Apply status/stashes regardless so the panel
+          // stays live, then recover: a stale filter is dropped and the log
+          // reloaded unfiltered; an unfiltered failure is a real repo error.
+          set({ status, stashes });
+          if (filterChanged) return;
+          if (logFilter !== null) {
+            set({ logFilter: null, error: String(logRes.err) });
+            try {
+              const log = await gitLog(root, limit, 0, null);
+              if (!disposed && get().logFilter === null) {
+                set({ commits: log.commits, hasMoreLog: log.hasMore });
+              }
+            } catch (e) {
+              if (!disposed) set({ error: String(e) });
+            }
+          } else {
+            set({ error: String(logRes.err) });
+          }
         } catch (e) {
           if (!disposed) set({ error: String(e) });
         }
       },
 
       loadMoreLog: async () => {
-        const { commits, hasMoreLog } = get();
+        const { commits, hasMoreLog, logFilter } = get();
         if (!hasMoreLog) return;
         const baseline = commits;
         try {
-          const log = await gitLog(root, LOG_PAGE, commits.length);
-          // Drop the result if the workspace closed or a concurrent refresh
-          // replaced the list we were appending to (avoids duplicates).
-          if (disposed || get().commits !== baseline) return;
+          const log = await gitLog(root, LOG_PAGE, commits.length, logFilter);
+          // Drop the result if the workspace closed, a concurrent refresh
+          // replaced the list we were appending to (avoids duplicates), or the
+          // filter changed under us (a failed setLogFilter leaves commits
+          // intact, so the identity check alone wouldn't catch it).
+          if (disposed || get().commits !== baseline || get().logFilter !== logFilter)
+            return;
           set({ commits: [...baseline, ...log.commits], hasMoreLog: log.hasMore });
         } catch (e) {
           if (!disposed) set({ error: String(e) });
+        }
+      },
+
+      setLogFilter: async (refName) => {
+        if (get().logFilter === refName) return;
+        set({ logFilter: refName });
+        try {
+          // Fresh single page: the previous filter's paging depth is moot.
+          const log = await gitLog(root, LOG_PAGE, 0, refName);
+          // Drop stale results (workspace closed / filter changed again).
+          if (disposed || get().logFilter !== refName) return;
+          set({ commits: log.commits, hasMoreLog: log.hasMore });
+        } catch (e) {
+          if (!disposed && get().logFilter === refName) set({ error: String(e) });
         }
       },
 
@@ -231,6 +302,10 @@ export const createRepoStore = (root: string): RepoStore => {
       discard: (paths) => mutate(() => gitDiscard(root, paths)),
       commit: (message, amend = false) =>
         mutate(() => gitCommit(root, message, amend)),
+      checkout: (refName, kind) => mutate(() => gitCheckout(root, refName, kind)),
+      createBranch: (name, oid, checkout) =>
+        mutate(() => gitCreateBranch(root, name, oid, checkout)),
+      squash: (oids) => mutate(() => gitSquash(root, oids)),
 
       stashSave: (message, includeUntracked) =>
         mutate(() => gitStashSave(root, message, includeUntracked)),

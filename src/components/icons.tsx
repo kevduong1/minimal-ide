@@ -111,6 +111,12 @@ export const IcDiff = (props: IconProps) => (
     <rect x="9.3" y="2.5" width="5.2" height="11" rx="1" />
   </Svg>
 );
+/** Funnel — commit-graph branch filter. */
+export const IcFilter = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.5 3.5h11L9.5 8.5v4.5l-3-1.8V8.5z" />
+  </Svg>
+);
 
 /* ------------------------------------------------------------------------- */
 /* Files & folders                                                            */
@@ -183,6 +189,12 @@ export const IcTerminal = (props: IconProps) => (
     <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
     <path d="M4 6l2.5 2L4 10" />
     <path d="M8 10.5h4" />
+  </Svg>
+);
+/** Four-pointed sparkle — agent terminal (activity-tracked). */
+export const IcSparkle = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 1.5L9.7 6.3L14.5 8L9.7 9.7L8 14.5L6.3 9.7L1.5 8L6.3 6.3Z" />
   </Svg>
 );
 /** Panel split into two columns at the midline (split-editor / split-terminal). */

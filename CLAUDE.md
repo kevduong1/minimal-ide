@@ -14,23 +14,23 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/ipc.ts` | Typed IPC contract — single source of truth for command names and payload shapes |
 | `src/lib/status.ts` | Shared status-code helpers: `statusLetter`, `statusColor`, `statusPaths` (renames span two paths!) |
 | `src/lib/graphLayout.ts` | Pure lane-layout algorithm for the commit graph (algorithm documented in-file) |
-| `src/lib/terminalActivity.ts` | Per-pane busy/attention heuristics (echo-suppressed output → busy; BEL/OSC 9/777 + quiet-while-away → attention; OSC 133/633 marks take over when present) |
+| `src/lib/terminalActivity.ts` | Per-pane busy/attention heuristics for **agent** terminals only (echo-suppressed output → busy; BEL/OSC 9/777 + quiet-while-away → attention; OSC 133/633 marks take over when present) |
 | `src/stores/workspaces.ts` | Workspace registry: one workspace per open repo (own repo/editor/terminal stores), open/close/setActive, session restore, `WorkspaceContext` + `useWorkspace`/`useRepo`/`useEditor`/`useTerminal` hooks |
-| `src/stores/repo.ts` | Per-workspace repo store factory: status/log/stashes, git mutations (return `Promise<boolean>`), watcher wiring (`init`/`dispose`), status-bar `error` |
+| `src/stores/repo.ts` | Per-workspace repo store factory: status/log/stashes, git mutations (return `Promise<boolean>`), log branch filter (`logFilter`/`setLogFilter`), watcher wiring (`init`/`dispose`), status-bar `error` |
 | `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved) |
-| `src/stores/terminal.ts` | Per-workspace terminal tab/pane UI-state factory ONLY (incl. `paneActivity` + `aggregateActivity`); never touches xterm or IPC |
+| `src/stores/terminal.ts` | Per-workspace terminal tab/pane UI-state factory ONLY (tab `kind`: `plain`/`agent`, `paneActivity` + `aggregateActivity`); never touches xterm or IPC |
 | `src/stores/ui.ts` | Global (workspace-independent) sidebar/terminal visibility and sizes |
 | `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘W ⌘1–9), welcome screen, drag resizers |
 | `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add) + active repo's branch pill and fetch |
 | `src/components/icons.tsx` | ALL shared SVG icons (16×16 stroke glyphs) — add new icons here, not inline |
-| `src/components/SourceControl.tsx` | SCM panel: stage/unstage/discard, commit (+amend, &push), stashes |
-| `src/components/GitGraph.tsx` | Hand-rolled virtualized commit list + SVG lane rail (no virtualization deps) |
+| `src/components/SourceControl.tsx` | SCM panel: stage/unstage/discard, commit (+amend, &push), stashes, commit-graph branch filter dropdown |
+| `src/components/GitGraph.tsx` | Hand-rolled virtualized commit list + SVG lane rail (no virtualization deps); ⌘/shift multi-select + right-click menu (checkout, create branch, squash, copy SHA) |
 | `src/components/Editor.tsx` | CodeMirror file editor + shared CM helpers (theme, languageFor, editKeymap) + unsaved-draft cache + external-change reload |
 | `src/components/DiffViewer.tsx` | @codemirror/merge split/unified diff; worktree diffs editable (⌘S), auto-refetch on repo change |
 | `src/components/TerminalPanel.tsx` | xterm + PTY lifecycle per pane (`XtermPane` one-shot effect) |
 | `src/components/FileExplorer.tsx` | Lazy directory tree (per-dir cache + expanded set) |
-| `src-tauri/src/git.rs` | All git2 commands; fetch/pull/push shell out to `git` CLI so user auth works |
-| `src-tauri/src/pty.rs` | PTY sessions keyed by frontend UUID; output streamed as base64 `pty-data:<id>` events |
+| `src-tauri/src/git.rs` | All git2 commands; fetch/pull/push/checkout/branch/squash-rebase shell out to `git` CLI so user auth + safety checks work |
+| `src-tauri/src/pty.rs` | PTY sessions keyed by frontend UUID; output streamed as base64 `pty-data:<id>` events with ack-based flow control (`pty_ack`, reader parks above 1 MiB unacked); kill = SIGHUP → 500 ms → SIGKILL process group |
 | `src-tauri/src/watcher.rs` | Debounced repo watchers (one per open repo, keyed by root) → `repo-changed` event `{repoPath, gitChanged}` |
 | `src-tauri/src/fsops.rs` | fs_read_dir / fs_read_file (5 MB cap, NUL + UTF-8 binary sniff) / atomic fs_write_file |
 
@@ -112,11 +112,15 @@ cd src-tauri && cargo check     # backend typecheck
   On reveal, `XtermPane`'s ResizeObserver refits + `term.refresh()`es
   IMMEDIATELY (no debounce) — xterm's renderer is paused while hidden and the
   WebGL canvas can come back blank, so a debounced refit reads as flicker.
-- `pty.rs` sets `TERM_PROGRAM=ghostty` on purpose: agent CLIs (Claude Code)
-  only emit OSC 9/777 notification sequences for a recognized terminal, and
-  `terminalActivity.ts` turns those into needs-attention tab indicators —
-  don't "fix" the masquerade away. Known cost: TERM_PROGRAM-sniffing image
-  CLIs (chafa, yazi) may emit Kitty graphics that xterm.js silently drops.
+- Terminal tabs come in two kinds: plain (default — no activity tracker, no
+  OSC handlers, no timers) and **agent** (sparkle button). Only agent panes
+  run `trackActivity` and only their PTYs set `TERM_PROGRAM=ghostty` — the
+  masquerade exists because agent CLIs (Claude Code) only emit OSC 9/777
+  notification sequences for a recognized terminal, which
+  `terminalActivity.ts` turns into needs-attention tab indicators — don't
+  "fix" it away for agent panes. Known cost: TERM_PROGRAM-sniffing image
+  CLIs (chafa, yazi) may emit Kitty graphics that xterm.js silently drops
+  (the reason plain panes don't masquerade; they scrub TERM_PROGRAM).
 - NEVER `fit.fit()` a hidden (display:none) xterm host: xterm 6 measures
   glyphs via OffscreenCanvas even unrendered, so FitAddon doesn't bail — it
   resizes the terminal+PTY to a bogus ~10×5 grid. Guard every fit path with

@@ -163,5 +163,10 @@
   color: var(--fg-dim);
 }
 .terminal-empty .primary-btn {
-  max-width: 160px;
+  max-width: 180px;
+}
+.terminal-empty .primary-btn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
 }

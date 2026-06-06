@@ -140,11 +140,14 @@ export const gitCommit = (
   amend: boolean,
 ): Promise<string> => invoke("git_commit", { repoPath, message, amend });
 
+/** `refName` (a short ref name) limits the log to commits reachable from it. */
 export const gitLog = (
   repoPath: string,
   limit: number,
   skip: number,
-): Promise<LogResult> => invoke("git_log", { repoPath, limit, skip });
+  refName?: string | null,
+): Promise<LogResult> =>
+  invoke("git_log", { repoPath, limit, skip, refName: refName ?? null });
 
 /** Files changed by a commit (vs its first parent). */
 export const gitCommitFiles = (
@@ -205,6 +208,40 @@ export const gitPull = (repoPath: string): Promise<GitOpResult> =>
 export const gitPush = (repoPath: string): Promise<GitOpResult> =>
   invoke("git_push", { repoPath });
 
+export type CheckoutKind = "local" | "remote" | "tag" | "commit";
+
+/**
+ * Checkout via the `git` CLI (keeps git's own dirty-worktree safety checks
+ * and messages). kind:
+ *  - local:  switch to the branch
+ *  - remote: switch to a local branch tracking it (created when missing)
+ *  - tag | commit: detached checkout
+ */
+export const gitCheckout = (
+  repoPath: string,
+  refName: string,
+  kind: CheckoutKind,
+): Promise<void> => invoke("git_checkout", { repoPath, refName, kind });
+
+export const gitCreateBranch = (
+  repoPath: string,
+  name: string,
+  oid: string,
+  checkout: boolean,
+): Promise<void> => invoke("git_create_branch", { repoPath, name, oid, checkout });
+
+/**
+ * Squash a contiguous run of commits on the current branch's first-parent
+ * chain into one commit (descendants are rebased on top). Rewrites history;
+ * confirm in UI first. The backend validates contiguity/reachability.
+ */
+export const gitSquash = (repoPath: string, oids: string[]): Promise<void> =>
+  invoke("git_squash", { repoPath, oids });
+
+/** All local + remote branches (locals first, alphabetical). */
+export const gitListRefs = (repoPath: string): Promise<RefLabel[]> =>
+  invoke("git_list_refs", { repoPath });
+
 // ---------------------------------------------------------------------------
 // FS commands
 // ---------------------------------------------------------------------------
@@ -259,14 +296,17 @@ export const onRepoChanged = (
  * The caller generates `id` (crypto.randomUUID()) and attaches the
  * `pty-data:<id>` / `pty-exit:<id>` listeners BEFORE calling this, so no
  * early output is lost. Output events carry a base64 payload; exit carries
- * the exit code.
+ * the exit code. `agent` panes get the notification-capable TERM_PROGRAM
+ * masquerade (so agent CLIs emit OSC 9/777 for the activity tracker); plain
+ * panes get an unset TERM_PROGRAM.
  */
 export const ptySpawn = (
   id: string,
   cwd: string,
   cols: number,
   rows: number,
-): Promise<void> => invoke("pty_spawn", { id, cwd, cols, rows });
+  agent: boolean,
+): Promise<void> => invoke("pty_spawn", { id, cwd, cols, rows, agent });
 
 /** Write user input (UTF-8 string from xterm onData). */
 export const ptyWrite = (id: string, data: string): Promise<void> =>
@@ -279,6 +319,16 @@ export const ptyResize = (
 ): Promise<void> => invoke("pty_resize", { id, cols, rows });
 
 export const ptyKill = (id: string): Promise<void> => invoke("pty_kill", { id });
+
+/**
+ * Flow control: acknowledge `bytes` of PTY output as consumed (xterm finished
+ * parsing them). The Rust reader thread parks once too many bytes are in
+ * flight unacknowledged, so a chatty child (`yes`, a huge `cat`) can't flood
+ * the webview event queue and freeze the UI. Call from term.write's
+ * completion callback with the decoded chunk length.
+ */
+export const ptyAck = (id: string, bytes: number): Promise<void> =>
+  invoke("pty_ack", { id, bytes });
 
 /** Decoded PTY output bytes — feed directly to xterm.write(). */
 export const onPtyData = (

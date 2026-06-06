@@ -39,6 +39,10 @@
 .gg-row.expanded {
   background: var(--bg-active);
 }
+.gg-row.selected,
+.gg-row.selected:hover {
+  background: var(--bg-selected);
+}
 
 .gg-rail {
   flex-shrink: 0;
@@ -185,4 +189,79 @@
   justify-content: center;
   color: var(--fg-faint);
   font-size: var(--font-size);
+}
+
+/* ---- context menu + create-branch popover ---- */
+
+.gg-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+}
+.gg-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  max-width: 300px;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+}
+.gg-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: var(--font-size);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.gg-menu button .truncate {
+  min-width: 0;
+}
+.gg-menu button:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+/* disabled stays hoverable (no pointer-events:none) so its title tooltip —
+   the squash-ineligibility reason — still surfaces */
+.gg-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.gg-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.gg-popover {
+  position: fixed;
+  z-index: 60;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 8px;
+}
+.gg-popover .text-input {
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+.gg-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+  cursor: pointer;
 }

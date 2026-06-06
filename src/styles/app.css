@@ -35,6 +35,12 @@
 
 .app-terminal {
   flex-shrink: 0;
+  /* The inline height is a remembered preference, not a contract: after a
+     window shrink it could exceed the center column and push the prompt
+     rows off-screen with nothing re-fitting them (no layout change at the
+     xterm hosts = no ResizeObserver). Clamping here shrinks the panel with
+     the window and lets the panes' observers refit. */
+  max-height: 100%;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
   position: relative;

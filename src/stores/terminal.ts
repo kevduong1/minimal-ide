@@ -5,9 +5,17 @@ import { createStore, type StoreApi } from "zustand/vanilla";
  * (panes) within each tab. xterm/PTY lifecycle lives in the components,
  * keyed by pane id — this store never touches xterm or IPC.
  */
+/**
+ * "agent" tabs run the activity tracker (busy/attention indicators) and get
+ * the notification-capable TERM_PROGRAM masquerade; "plain" tabs are bare
+ * terminals — no output watching, no timers, no masquerade.
+ */
+export type TerminalKind = "plain" | "agent";
+
 export interface TerminalTab {
   id: string;
-  /** Display title, e.g. "Terminal 1". */
+  kind: TerminalKind;
+  /** Display title, e.g. "Terminal 1" / "Agent 1". */
   title: string;
   /** Pane ids, left -> right. */
   paneIds: string[];
@@ -55,7 +63,7 @@ export interface TerminalState {
   /** Sparse per-pane activity — only panes that are busy / need attention. */
   paneActivity: Record<string, PaneActivity>;
 
-  newTab: () => void;
+  newTab: (kind?: TerminalKind) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   /** Inserts a new pane right after the active pane of the active tab. */
@@ -72,10 +80,10 @@ export interface TerminalState {
 
 export type TerminalStore = StoreApi<TerminalState>;
 
-/** Lowest unused "Terminal N" number (resets once all tabs are closed). */
-const nextTitleNumber = (tabs: TerminalTab[]): number =>
+/** Lowest unused "<prefix> N" number (resets once all such tabs are closed). */
+const nextTitleNumber = (tabs: TerminalTab[], prefix: string): number =>
   tabs.reduce((max, t) => {
-    const m = /^Terminal (\d+)$/.exec(t.title);
+    const m = new RegExp(`^${prefix} (\\d+)$`).exec(t.title);
     return m ? Math.max(max, Number(m[1])) : max;
   }, 0) + 1;
 
@@ -86,12 +94,14 @@ export const createTerminalStore = (): TerminalStore =>
   activeTabId: null,
   paneActivity: {},
 
-  newTab: () =>
+  newTab: (kind = "plain") =>
     set((s) => {
       const paneId = crypto.randomUUID();
+      const prefix = kind === "agent" ? "Agent" : "Terminal";
       const tab: TerminalTab = {
         id: crypto.randomUUID(),
-        title: `Terminal ${nextTitleNumber(s.tabs)}`,
+        kind,
+        title: `${prefix} ${nextTitleNumber(s.tabs, prefix)}`,
         paneIds: [paneId],
         activePaneId: paneId,
       };

@@ -3,16 +3,25 @@
  * commit summary, author and relative time. Virtualized by hand (no deps):
  * a flat item array (commit / file / loadmore rows) rendered as an absolutely
  * positioned visible slice inside one scroll container.
+ *
+ * Interactions: click expands a commit's files; ⌘-click / shift-click build a
+ * multi-selection; right-click opens a context menu (checkout refs / detached,
+ * create branch, squash selection, copy SHA). Squash eligibility is
+ * pre-checked here against the loaded window for menu enablement, but the
+ * backend re-validates authoritatively (git_squash).
  */
 import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { useRepo, useWorkspace } from "../stores/workspaces";
 import { gitCommitFiles, type CommitFile, type RefLabel } from "../lib/ipc";
 import { statusColor } from "../lib/status";
@@ -48,6 +57,152 @@ const PILL_ICON: Record<RefLabel["kind"], ReactNode> = {
   remote: <IcRemote />,
   tag: <IcTag />,
 };
+
+/** Clipboard write; falls back to execCommand (no clipboard plugin needed). */
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Context menu + create-branch popover (fixed-position overlays)
+// ---------------------------------------------------------------------------
+
+function ContextMenu({
+  x,
+  y,
+  onClose,
+  children,
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+
+  // clamp into the viewport once the real size is known (pre-paint)
+  useLayoutEffect(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({
+      left: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)),
+      top: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)),
+    });
+  }, [x, y]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div
+        className="gg-menu-backdrop"
+        onMouseDown={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onClose();
+        }}
+      />
+      <div ref={ref} className="gg-menu" style={pos}>
+        {children}
+      </div>
+    </>
+  );
+}
+
+function BranchPopover({
+  x,
+  y,
+  oid,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  oid: string;
+  onClose: () => void;
+}) {
+  const ws = useWorkspace();
+  const [name, setName] = useState("");
+  const [switchTo, setSwitchTo] = useState(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // submit reads fresh name/switchTo via refs so the window-level key handler
+  // never closes over stale state
+  const stateRef = useRef({ name, switchTo });
+  stateRef.current = { name, switchTo };
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const submit = useCallback(() => {
+    const { name: n, switchTo: s } = stateRef.current;
+    if (!n.trim()) return;
+    onClose();
+    void ws.repo.getState().createBranch(n.trim(), oid, s);
+  }, [onClose, oid, ws]);
+
+  // Enter/Escape work even after focus leaves the input (e.g. after clicking
+  // the checkbox), which a bare input onKeyDown would miss.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "Enter") submit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, submit]);
+
+  return (
+    <>
+      <div className="gg-menu-backdrop" onMouseDown={onClose} />
+      <div
+        className="gg-popover"
+        style={{
+          left: Math.max(4, Math.min(x, window.innerWidth - 248)),
+          top: Math.max(4, Math.min(y, window.innerHeight - 96)),
+        }}
+      >
+        <input
+          ref={inputRef}
+          className="text-input"
+          placeholder={`New branch at ${oid.slice(0, 7)}…`}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          spellCheck={false}
+        />
+        {/* keep input focus when toggling the checkbox so Enter still submits */}
+        <label
+          className="gg-popover-row"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <input
+            type="checkbox"
+            checked={switchTo}
+            onChange={(e) => setSwitchTo(e.target.checked)}
+          />
+          Switch to new branch
+        </label>
+      </div>
+    </>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Rail (the lane/dot SVG at the left of a commit row)
@@ -179,12 +334,17 @@ const CommitRow = memo(function CommitRow({
   row,
   top,
   expanded,
-  onToggle,
+  selected,
+  onSelect,
+  onContext,
 }: {
   row: GraphRow;
   top: number;
   expanded: boolean;
-  onToggle: (oid: string) => void;
+  selected: boolean;
+  /** Plain click toggles file expansion; ⌘/shift clicks build the selection. */
+  onSelect: (oid: string, e: ReactMouseEvent) => void;
+  onContext: (oid: string, e: ReactMouseEvent) => void;
 }) {
   const c = row.commit;
   const title = `${c.oid}\n${c.author} <${c.email}>\n${new Date(
@@ -192,10 +352,11 @@ const CommitRow = memo(function CommitRow({
   ).toISOString()}`;
   return (
     <div
-      className={`gg-row${expanded ? " expanded" : ""}`}
+      className={`gg-row${expanded ? " expanded" : ""}${selected ? " selected" : ""}`}
       style={{ top }}
       title={title}
-      onClick={() => onToggle(c.oid)}
+      onClick={(e) => onSelect(c.oid, e)}
+      onContextMenu={(e) => onContext(c.oid, e)}
     >
       <Rail row={row} />
       <RefPills refs={c.refs} isHead={c.isHead} />
@@ -272,12 +433,37 @@ type Item =
   | { type: "loadmore" };
 
 export default function GitGraph() {
+  const ws = useWorkspace();
   const repoPath = useRepo((s) => s.repoPath);
   const commits = useRepo((s) => s.commits);
   const hasMoreLog = useRepo((s) => s.hasMoreLog);
   const loadMoreLog = useRepo((s) => s.loadMoreLog);
+  const branchName = useRepo((s) => s.status?.branch.name);
+  const detached = useRepo((s) => s.status?.branch.detached ?? false);
 
   const layout = useMemo(() => computeGraph(commits), [commits]);
+  const byOid = useMemo(
+    () => new Map(commits.map((c) => [c.oid, c])),
+    [commits],
+  );
+  const orderIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    commits.forEach((c, i) => m.set(c.oid, i));
+    return m;
+  }, [commits]);
+  // HEAD's first-parent chain within the loaded window (oid -> depth). Topo
+  // sorting puts parents after children, so within the window the chain is
+  // gap-free; empty when HEAD itself isn't loaded (e.g. filtered log).
+  const headChain = useMemo(() => {
+    const m = new Map<string, number>();
+    let cur = commits.find((c) => c.isHead);
+    let depth = 0;
+    while (cur && !m.has(cur.oid)) {
+      m.set(cur.oid, depth++);
+      cur = cur.parents.length > 0 ? byOid.get(cur.parents[0]) : undefined;
+    }
+    return m;
+  }, [commits, byOid]);
 
   // single expanded commit + per-oid file cache ("error" = fetch failed)
   const [expandedOid, setExpandedOid] = useState<string | null>(null);
@@ -285,6 +471,18 @@ export default function GitGraph() {
     () => new Map(),
   );
   const inflight = useRef<Set<string>>(new Set());
+
+  // multi-selection (⌘/shift clicks) + context menu / create-branch popover
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const anchorRef = useRef<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; oid: string } | null>(
+    null,
+  );
+  const [branchPopover, setBranchPopover] = useState<{
+    x: number;
+    y: number;
+    oid: string;
+  } | null>(null);
 
   // virtualization state
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -297,8 +495,31 @@ export default function GitGraph() {
     setFileCache(new Map());
     inflight.current.clear();
     setScrollTop(0);
+    setSelected(new Set());
+    anchorRef.current = null;
+    setMenu(null);
+    setBranchPopover(null);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [repoPath]);
+
+  // drop selection/menu entries whose commits left the log (refresh, squash)
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      for (const oid of prev) {
+        if (byOid.has(oid)) next.add(oid);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+    if (anchorRef.current && !byOid.has(anchorRef.current)) {
+      anchorRef.current = null;
+    }
+    setMenu((prev) => (prev && !byOid.has(prev.oid) ? null : prev));
+    setBranchPopover((prev) => (prev && !byOid.has(prev.oid) ? null : prev));
+  }, [byOid]);
 
   // fetch the expanded commit's files once, cache forever (per oid)
   useEffect(() => {
@@ -349,6 +570,94 @@ export default function GitGraph() {
     setExpandedOid((prev) => (prev === oid ? null : oid));
   }, []);
 
+  // plain click: expand files (clears selection); ⌘: toggle; shift: range
+  const handleSelectClick = useCallback(
+    (oid: string, e: ReactMouseEvent) => {
+      if (e.shiftKey) {
+        const a = anchorRef.current
+          ? orderIndex.get(anchorRef.current)
+          : undefined;
+        const b = orderIndex.get(oid);
+        if (a !== undefined && b !== undefined) {
+          const [lo, hi] = a <= b ? [a, b] : [b, a];
+          setSelected(new Set(commits.slice(lo, hi + 1).map((c) => c.oid)));
+        } else {
+          anchorRef.current = oid;
+          setSelected(new Set([oid]));
+        }
+        return;
+      }
+      if (e.metaKey) {
+        anchorRef.current = oid;
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(oid)) next.delete(oid);
+          else next.add(oid);
+          return next;
+        });
+        return;
+      }
+      anchorRef.current = oid;
+      setSelected((prev) => (prev.size > 0 ? new Set<string>() : prev));
+      toggleExpand(oid);
+    },
+    [commits, orderIndex, toggleExpand],
+  );
+
+  // right-click joins the existing selection or starts a fresh one
+  const handleContext = useCallback((oid: string, e: ReactMouseEvent) => {
+    e.preventDefault();
+    anchorRef.current = oid;
+    setSelected((prev) => (prev.has(oid) ? prev : new Set([oid])));
+    setBranchPopover(null);
+    setMenu({ x: e.clientX, y: e.clientY, oid });
+  }, []);
+
+  /**
+   * Local pre-check mirroring git_squash's rules against the loaded window:
+   * single-parent commits forming a contiguous run on HEAD's first-parent
+   * chain. Returns a disabled-reason or null (= allowed / unknown, in which
+   * case the backend's authoritative validation decides).
+   */
+  const squashCheck = (oids: string[]): string | null => {
+    for (const oid of oids) {
+      const c = byOid.get(oid);
+      if (!c) continue; // beyond the loaded window — backend validates
+      if (c.parents.length > 1) return "merge commits cannot be squashed";
+      if (c.parents.length === 0) return "the root commit cannot be squashed";
+    }
+    if (headChain.size === 0) return null; // HEAD not loaded (filtered log)
+    const pos: number[] = [];
+    for (const oid of oids) {
+      const p = headChain.get(oid);
+      if (p === undefined) {
+        // a loaded commit off the chain is ineligible; an unloaded one (the
+        // parent extension one past the window) is left to the backend
+        if (byOid.has(oid)) return "commits must be on the current branch";
+        continue;
+      }
+      pos.push(p);
+    }
+    pos.sort((x, y) => x - y);
+    for (let i = 1; i < pos.length; i++) {
+      if (pos[i] !== pos[i - 1] + 1) return "selection must be contiguous";
+    }
+    return null;
+  };
+
+  const runSquash = async (oids: string[]) => {
+    setMenu(null);
+    const ok = await confirm(
+      `Squash ${oids.length} commits into one?\nThis rewrites the current branch's history.`,
+      { title: "Squash Commits", kind: "warning" },
+    );
+    if (!ok) return;
+    if (await ws.repo.getState().squash(oids)) {
+      setSelected(new Set());
+      anchorRef.current = null;
+    }
+  };
+
   const handleLoadMore = useCallback(() => {
     void loadMoreLog();
   }, [loadMoreLog]);
@@ -394,7 +703,9 @@ export default function GitGraph() {
           row={it.row}
           top={top}
           expanded={it.row.commit.oid === expandedOid}
-          onToggle={toggleExpand}
+          selected={selected.has(it.row.commit.oid)}
+          onSelect={handleSelectClick}
+          onContext={handleContext}
         />,
       );
     } else if (it.type === "file") {
@@ -422,6 +733,110 @@ export default function GitGraph() {
     }
   }
 
+  // ---- context menu items (rebuilt per open; cheap) ----
+  const renderMenuItems = (m: { x: number; y: number; oid: string }) => {
+    const c = byOid.get(m.oid);
+    if (!c) return null;
+    const close = () => setMenu(null);
+    const repo = () => ws.repo.getState();
+    // selection in display order (newest -> oldest); only acts on the
+    // multi-selection when the clicked commit is part of it
+    const sel = commits.filter((k) => selected.has(k.oid)).map((k) => k.oid);
+    const target = sel.includes(c.oid) ? sel : [c.oid];
+
+    const items: ReactNode[] = [];
+    for (const r of c.refs) {
+      // the checked-out branch needs no checkout entry
+      if (r.kind === "local" && !detached && r.name === branchName) continue;
+      items.push(
+        <button
+          key={`co:${r.kind}:${r.name}`}
+          onClick={() => {
+            close();
+            void repo().checkout(r.name, r.kind);
+          }}
+        >
+          <span className="truncate">Checkout {r.name}</span>
+        </button>,
+      );
+    }
+    if (!(c.isHead && detached)) {
+      items.push(
+        <button
+          key="detach"
+          onClick={() => {
+            close();
+            void repo().checkout(c.oid, "commit");
+          }}
+        >
+          Checkout Commit (Detached)
+        </button>,
+      );
+    }
+    items.push(
+      <button
+        key="newbranch"
+        onClick={() => {
+          setBranchPopover({ x: m.x, y: m.y, oid: c.oid });
+          close();
+        }}
+      >
+        Create Branch Here…
+      </button>,
+      <div key="s1" className="gg-menu-sep" />,
+    );
+    if (target.length >= 2) {
+      const reason = squashCheck(target);
+      items.push(
+        <button
+          key="squash"
+          disabled={reason !== null}
+          title={reason ?? undefined}
+          onClick={() => void runSquash(target)}
+        >
+          Squash {target.length} Commits…
+        </button>,
+      );
+    }
+    {
+      // selection (or the single commit) + its parent, melded into one
+      const oldest = byOid.get(target[target.length - 1]);
+      const ext =
+        oldest && oldest.parents.length === 1
+          ? [...target, oldest.parents[0]]
+          : null;
+      const reason =
+        ext === null
+          ? "no parent in the loaded history"
+          : squashCheck(ext);
+      items.push(
+        <button
+          key="squash-parent"
+          disabled={reason !== null}
+          title={reason ?? undefined}
+          onClick={() => {
+            if (ext) void runSquash(ext);
+          }}
+        >
+          Squash into Parent…
+        </button>,
+      );
+    }
+    items.push(
+      <div key="s2" className="gg-menu-sep" />,
+      <button
+        key="copy"
+        onClick={() => {
+          close();
+          void copyText(c.oid);
+        }}
+      >
+        Copy SHA
+      </button>,
+    );
+    return items;
+  };
+
   return (
     <div className="git-graph">
       <div className="gg-scroll" ref={scrollRef} onScroll={onScroll}>
@@ -429,6 +844,19 @@ export default function GitGraph() {
           {visible}
         </div>
       </div>
+      {menu && byOid.has(menu.oid) && (
+        <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
+          {renderMenuItems(menu)}
+        </ContextMenu>
+      )}
+      {branchPopover && (
+        <BranchPopover
+          x={branchPopover.x}
+          y={branchPopover.y}
+          oid={branchPopover.oid}
+          onClose={() => setBranchPopover(null)}
+        />
+      )}
     </div>
   );
 }

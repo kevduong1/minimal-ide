@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -9,23 +10,26 @@ import {
 import { confirm, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import { useShallow } from "zustand/react/shallow";
 import { useEditor, useRepo, useWorkspace } from "../stores/workspaces";
-import type { FileStatus } from "../lib/ipc";
+import { gitListRefs, type FileStatus, type RefLabel } from "../lib/ipc";
 import { statusColor, statusLetter, statusPaths } from "../lib/status";
 import GitGraph from "./GitGraph";
 import {
   IcApply,
   IcBox,
+  IcBranch,
   IcCheck,
   IcChevronDown,
   IcChevronRight,
   IcDiscard,
   IcFile,
+  IcFilter,
   IcMinus,
   IcPlus,
   IcPop,
   IcPull,
   IcPush,
   IcRefresh,
+  IcRemote,
   IcSync,
   IcTrash,
 } from "./icons";
@@ -212,6 +216,21 @@ export default function SourceControl() {
   const [stashInputOpen, setStashInputOpen] = useState(false);
   const [stashMsg, setStashMsg] = useState("");
 
+  // commit-graph branch filter dropdown (refs fetched on open). Rendered as a
+  // viewport-clamped fixed overlay: the Commits header sits at the bottom of
+  // the panel inside an overflow:hidden container, so an absolute dropdown
+  // would be clipped (and its backdrop would still eat clicks).
+  const logFilter = useRepo((s) => s.logFilter);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterRefs, setFilterRefs] = useState<RefLabel[] | null>(null);
+  const [filterQuery, setFilterQuery] = useState("");
+  const filterBtnRef = useRef<HTMLButtonElement>(null);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const [filterPos, setFilterPos] = useState<{ left: number; top: number }>({
+    left: 0,
+    top: 0,
+  });
+
   const taRef = useRef<HTMLTextAreaElement>(null);
   const stashInputRef = useRef<HTMLInputElement>(null);
 
@@ -307,6 +326,44 @@ export default function SourceControl() {
       { title: "Drop Stash", kind: "warning" },
     );
     if (ok) await ws.repo.getState().stashDrop(oid);
+  };
+
+  const openFilter = async () => {
+    // seed a position from the button so the menu paints in roughly the right
+    // spot before the layout-effect clamps it
+    const r = filterBtnRef.current?.getBoundingClientRect();
+    if (r) setFilterPos({ left: r.right - 230, top: r.bottom + 4 });
+    setFilterQuery("");
+    setFilterRefs(null);
+    setFilterOpen(true);
+    try {
+      setFilterRefs(await gitListRefs(ws.path));
+    } catch {
+      setFilterRefs([]);
+    }
+  };
+
+  // clamp the open dropdown into the viewport, flipping above the button when
+  // there's no room below (re-runs as the ref list arrives and changes height)
+  useLayoutEffect(() => {
+    if (!filterOpen) return;
+    const btn = filterBtnRef.current?.getBoundingClientRect();
+    const menu = filterMenuRef.current?.getBoundingClientRect();
+    if (!btn || !menu) return;
+    const left = Math.max(4, Math.min(btn.right - menu.width, window.innerWidth - menu.width - 4));
+    let top = btn.bottom + 4;
+    if (top + menu.height > window.innerHeight - 4) {
+      const above = btn.top - menu.height - 4;
+      top = above >= 4 ? above : Math.max(4, window.innerHeight - menu.height - 4);
+    }
+    if (Math.abs(left - filterPos.left) > 0.5 || Math.abs(top - filterPos.top) > 0.5) {
+      setFilterPos({ left, top });
+    }
+  }, [filterOpen, filterRefs, filterQuery, filterPos.left, filterPos.top]);
+
+  const pickFilter = (refName: string | null) => {
+    setFilterOpen(false);
+    void ws.repo.getState().setLogFilter(refName);
   };
 
   const canCommit = commitMsg.trim().length > 0 && !busy;
@@ -573,7 +630,81 @@ export default function SourceControl() {
             <IcChevronRight />
           </span>
           <span className="sc-section-title truncate">Commits</span>
+          {logFilter && (
+            <span
+              className="sc-badge sc-filter-badge truncate"
+              title={`Showing only ${logFilter}`}
+            >
+              {logFilter}
+            </span>
+          )}
+          <span
+            className={`sc-section-actions${logFilter ? " pinned" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              ref={filterBtnRef}
+              className={`icon-btn${logFilter ? " active" : ""}`}
+              title="Filter by Branch"
+              onClick={() => (filterOpen ? setFilterOpen(false) : void openFilter())}
+            >
+              <IcFilter />
+            </button>
+          </span>
         </div>
+        {filterOpen && (
+          <>
+            <div
+              className="sc-menu-backdrop"
+              onMouseDown={() => setFilterOpen(false)}
+            />
+            <div
+              ref={filterMenuRef}
+              className="sc-filter-menu"
+              style={{ left: filterPos.left, top: filterPos.top }}
+            >
+              <input
+                className="text-input"
+                placeholder="Filter branches…"
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setFilterOpen(false);
+                }}
+                autoFocus
+                spellCheck={false}
+              />
+              <div className="sc-filter-list">
+                <button
+                  className={logFilter === null ? "checked" : ""}
+                  onClick={() => pickFilter(null)}
+                >
+                  <IcBranch />
+                  <span className="truncate">All Branches</span>
+                </button>
+                {filterRefs === null ? (
+                  <div className="sc-filter-empty">loading…</div>
+                ) : (
+                  filterRefs
+                    .filter((r) =>
+                      r.name.toLowerCase().includes(filterQuery.toLowerCase()),
+                    )
+                    .map((r) => (
+                      <button
+                        key={`${r.kind}:${r.name}`}
+                        className={logFilter === r.name ? "checked" : ""}
+                        title={r.name}
+                        onClick={() => pickFilter(r.name)}
+                      >
+                        {r.kind === "remote" ? <IcRemote /> : <IcBranch />}
+                        <span className="truncate">{r.name}</span>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+          </>
+        )}
         {commitsOpen && (
           <div className="sc-graph-wrap">
             <GitGraph />

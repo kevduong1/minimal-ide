@@ -356,3 +356,67 @@
   flex: 1;
   min-height: 0;
 }
+
+/* branch filter (Commits header) */
+.sc-filter-badge {
+  max-width: 110px;
+}
+.sc-section-actions.pinned {
+  display: flex;
+}
+.sc-section-header .icon-btn.active {
+  color: var(--accent);
+}
+.sc-filter-menu {
+  position: fixed;
+  z-index: 60;
+  width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 6px;
+}
+.sc-filter-menu .text-input {
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+.sc-filter-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.sc-filter-list button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: var(--font-size);
+  color: var(--fg);
+}
+.sc-filter-list button:hover {
+  background: var(--bg-hover);
+}
+.sc-filter-list button.checked {
+  color: var(--accent);
+}
+.sc-filter-list button svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--fg-dim);
+}
+.sc-filter-list button .truncate {
+  flex: 1;
+  min-width: 0;
+}
+.sc-filter-empty {
+  padding: 6px 8px;
+  color: var(--fg-faint);
+  font-size: var(--font-size-sm);
+}

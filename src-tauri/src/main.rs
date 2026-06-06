@@ -6,11 +6,22 @@ mod git;
 mod pty;
 mod watcher;
 
+use tauri::Manager;
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
         .manage(watcher::WatcherState::default())
+        // A page (re)load loses all frontend terminal state (dev HMR full
+        // reload): kill the now-unreachable PTY sessions instead of leaking
+        // them — a flow-parked reader would otherwise never be acked again
+        // and freeze its child mid-write. No-op on the initial load.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                pty::kill_all(&webview.app_handle().state::<pty::PtyState>());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // git
             git::git_open,
@@ -30,6 +41,10 @@ fn main() {
             git::git_fetch,
             git::git_pull,
             git::git_push,
+            git::git_checkout,
+            git::git_create_branch,
+            git::git_squash,
+            git::git_list_refs,
             // fs
             fsops::fs_read_dir,
             fsops::fs_read_file,
@@ -41,6 +56,7 @@ fn main() {
             pty::pty_spawn,
             pty::pty_write,
             pty::pty_resize,
+            pty::pty_ack,
             pty::pty_kill,
         ])
         .run(tauri::generate_context!())

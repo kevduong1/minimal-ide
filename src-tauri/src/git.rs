@@ -609,7 +609,12 @@ pub async fn git_commit(repo_path: String, message: String, amend: bool) -> Resu
 }
 
 #[tauri::command]
-pub async fn git_log(repo_path: String, limit: usize, skip: usize) -> Result<LogResult, String> {
+pub async fn git_log(
+    repo_path: String,
+    limit: usize,
+    skip: usize,
+    ref_name: Option<String>,
+) -> Result<LogResult, String> {
     blocking(move || {
         let repo = open_repo(&repo_path)?;
 
@@ -647,11 +652,33 @@ pub async fn git_log(repo_path: String, limit: usize, skip: usize) -> Result<Log
             Ok(w) => w,
             Err(e) => return Err(e.to_string()),
         };
-        // All of these can fail on an empty/unborn repo; that's fine.
-        let _ = walk.push_head();
-        let _ = walk.push_glob("refs/heads/*");
-        let _ = walk.push_glob("refs/remotes/*");
-        let _ = walk.push_glob("refs/tags/*");
+        match &ref_name {
+            // Filtered: only commits reachable from this ref. The filter
+            // dropdown only offers branches, so prefer refs/heads then
+            // refs/remotes before libgit2's dwim (which tries refs/tags FIRST
+            // and would let a same-named tag shadow the chosen branch).
+            // Resolution failures are real errors — the UI should learn its
+            // filter went stale (branch deleted) instead of silently seeing
+            // everything.
+            Some(name) => {
+                let resolved = repo
+                    .find_reference(&format!("refs/heads/{name}"))
+                    .or_else(|_| repo.find_reference(&format!("refs/remotes/{name}")))
+                    .or_else(|_| repo.resolve_reference_from_short_name(name));
+                let oid = resolved
+                    .and_then(|r| r.peel_to_commit())
+                    .map_err(|e| format!("cannot resolve '{name}': {}", e.message()))?
+                    .id();
+                walk.push(oid).map_err(|e| e.to_string())?;
+            }
+            None => {
+                // All of these can fail on an empty/unborn repo; that's fine.
+                let _ = walk.push_head();
+                let _ = walk.push_glob("refs/heads/*");
+                let _ = walk.push_glob("refs/remotes/*");
+                let _ = walk.push_glob("refs/tags/*");
+            }
+        }
         let _ = walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME);
 
         let mut commits = Vec::new();
@@ -902,6 +929,290 @@ pub async fn git_pull(repo_path: String) -> Result<GitOpResult, String> {
 pub async fn git_push(repo_path: String) -> Result<GitOpResult, String> {
     blocking(move || {
         Ok(run_git(&repo_path, &["push"]))
+    })
+    .await
+}
+
+/// Checkout shells out to the `git` CLI so its safety checks and messages
+/// ("Your local changes ... would be overwritten") reach the user verbatim.
+/// kind: "local" | "remote" | "tag" | "commit" — remote checks out a local
+/// tracking branch (created when missing); tag/commit detach HEAD.
+#[tauri::command]
+pub async fn git_checkout(repo_path: String, ref_name: String, kind: String) -> Result<(), String> {
+    blocking(move || {
+        // A ref shorthand beginning with '-' lands in an option position on the
+        // CLI: a ref named "-f" would turn `git checkout -f` into a force-
+        // checkout that silently discards the worktree. Reject it (a bare `--`
+        // can't be used — it flips checkout into pathspec mode). The "commit"
+        // kind always carries a hex oid, so it's never option-shaped.
+        if ref_name.starts_with('-') {
+            return Err(format!("invalid ref name: {ref_name}"));
+        }
+        let res = match kind.as_str() {
+            "local" => run_git(&repo_path, &["checkout", &ref_name]),
+            "remote" => {
+                // "origin/foo" -> local "foo": strip the longest matching
+                // remote prefix (branch names may themselves contain '/').
+                let repo = open_repo(&repo_path)?;
+                let mut local: Option<String> = None;
+                let mut best = 0usize;
+                if let Ok(remotes) = repo.remotes() {
+                    // iter() items are Result<Option<&str>> — flatten both
+                    for r in remotes.iter().flatten().flatten() {
+                        let prefix = format!("{r}/");
+                        if r.len() > best && ref_name.starts_with(&prefix) {
+                            best = r.len();
+                            local = Some(ref_name[prefix.len()..].to_string());
+                        }
+                    }
+                }
+                let local = local
+                    .ok_or_else(|| format!("cannot derive a local branch name from {ref_name}"))?;
+                // The derived name ("origin/-f" -> "-f") also lands in an
+                // option position — apply the same guard.
+                if local.starts_with('-') {
+                    return Err(format!("invalid ref name: {local}"));
+                }
+                if repo.find_branch(&local, BranchType::Local).is_ok() {
+                    run_git(&repo_path, &["checkout", &local])
+                } else {
+                    // Explicit --track sidesteps checkout's DWIM ambiguity
+                    // when several remotes have a branch of the same name.
+                    run_git(&repo_path, &["checkout", "--track", &ref_name])
+                }
+            }
+            "tag" | "commit" => run_git(&repo_path, &["checkout", "--detach", &ref_name]),
+            other => return Err(format!("unknown checkout kind: {other}")),
+        };
+        if res.ok {
+            Ok(())
+        } else {
+            Err(res.output)
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_create_branch(
+    repo_path: String,
+    name: String,
+    oid: String,
+    checkout: bool,
+) -> Result<(), String> {
+    blocking(move || {
+        // git validates branch-name syntax itself; only reject what it would
+        // parse as a command-line option instead of a name.
+        if name.starts_with('-') {
+            return Err(format!("invalid branch name: {name}"));
+        }
+        let res = if checkout {
+            run_git(&repo_path, &["checkout", "-b", &name, &oid])
+        } else {
+            run_git(&repo_path, &["branch", &name, &oid])
+        };
+        if res.ok {
+            Ok(())
+        } else {
+            Err(res.output)
+        }
+    })
+    .await
+}
+
+/// How far down the first-parent chain of HEAD we search for the commits
+/// being squashed before giving up.
+const SQUASH_MAX_WALK: usize = 10_000;
+
+/// Squash a contiguous run of commits on the current branch's first-parent
+/// chain into a single commit; descendants are replayed on top via
+/// `git rebase --onto`. Validation lives here (not the UI) because only the
+/// repository knows the true chain: the commits must form one gap-free run —
+/// a gap would silently fold unselected commits into the squash.
+#[tauri::command]
+pub async fn git_squash(repo_path: String, oids: Vec<String>) -> Result<(), String> {
+    blocking(move || {
+        let repo = open_repo(&repo_path)?;
+        let mut wanted = std::collections::HashSet::new();
+        for s in &oids {
+            wanted.insert(Oid::from_str(s).map_err(|e| e.to_string())?);
+        }
+        if wanted.len() < 2 {
+            return Err("select at least two commits to squash".to_string());
+        }
+
+        // Detached HEAD: `git rebase --onto` would move only HEAD and leave
+        // every branch on the old history, so the "rewrite the branch" the UI
+        // promises silently doesn't happen and the result is easily orphaned.
+        if repo.head_detached().unwrap_or(false) {
+            return Err("cannot squash on a detached HEAD — check out a branch first".to_string());
+        }
+
+        // Walk HEAD's first-parent chain; the wanted commits must appear as
+        // one contiguous run (newest first).
+        let head = repo
+            .head()
+            .and_then(|h| h.peel_to_commit())
+            .map_err(|e| e.to_string())?;
+        let head_oid = head.id();
+        let mut range: Vec<Oid> = Vec::new();
+        let mut cur = head;
+        let mut steps = 0usize;
+        loop {
+            if wanted.contains(&cur.id()) {
+                range.push(cur.id());
+                if range.len() == wanted.len() {
+                    break;
+                }
+            } else if !range.is_empty() {
+                return Err("selected commits must be contiguous".to_string());
+            }
+            steps += 1;
+            if steps > SQUASH_MAX_WALK {
+                return Err("selected commits are not on the current branch".to_string());
+            }
+            cur = match cur.parent(0) {
+                Ok(p) => p,
+                Err(_) => {
+                    return Err("selected commits are not on the current branch".to_string());
+                }
+            };
+        }
+        for oid in &range {
+            let c = repo.find_commit(*oid).map_err(|e| e.to_string())?;
+            if c.parent_count() != 1 {
+                return Err("merge commits and the root commit cannot be squashed".to_string());
+            }
+        }
+
+        // Leak guard: a merge ABOVE the range whose two sides fork from INSIDE
+        // the squashed run leaves the original commits reachable after
+        // `git rebase --rebase-merges` (cousins keep their original base), so
+        // the squash silently half-applies. Walk base..HEAD; refuse if any
+        // merge's parents converge on a range member.
+        {
+            let range_set: std::collections::HashSet<Oid> = range.iter().copied().collect();
+            let oldest_base = range
+                .last()
+                .and_then(|o| repo.find_commit(*o).ok())
+                .and_then(|c| c.parent(0).ok())
+                .map(|p| p.id());
+            let mut leak_walk = repo.revwalk().map_err(|e| e.to_string())?;
+            leak_walk.push(head_oid).map_err(|e| e.to_string())?;
+            if let Some(b) = oldest_base {
+                let _ = leak_walk.hide(b);
+            }
+            for res in leak_walk {
+                let oid = res.map_err(|e| e.to_string())?;
+                let c = repo.find_commit(oid).map_err(|e| e.to_string())?;
+                if c.parent_count() < 2 {
+                    continue;
+                }
+                let first = c.parent_id(0).map_err(|e| e.to_string())?;
+                for i in 1..c.parent_count() {
+                    let side = c.parent_id(i).map_err(|e| e.to_string())?;
+                    if let Ok(mb) = repo.merge_base(first, side) {
+                        if range_set.contains(&mb) {
+                            return Err(
+                                "a later merge branches from the selected commits — \
+                                 squashing would leave them in history"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // The squash commit reuses the newest tree (= the combined content),
+        // parents onto the oldest's parent, keeps the oldest commit's author
+        // and concatenates messages oldest-first (`git rebase` conventions).
+        let newest = repo.find_commit(range[0]).map_err(|e| e.to_string())?;
+        let oldest = repo
+            .find_commit(*range.last().unwrap())
+            .map_err(|e| e.to_string())?;
+        let base = oldest.parent(0).map_err(|e| e.to_string())?;
+        let mut message = String::new();
+        for oid in range.iter().rev() {
+            let c = repo.find_commit(*oid).map_err(|e| e.to_string())?;
+            let m = lossy(c.message_bytes());
+            if !message.is_empty() {
+                message.push_str("\n\n");
+            }
+            message.push_str(m.trim_end());
+        }
+        message.push('\n');
+        let committer = repo.signature().map_err(|e| e.to_string())?;
+        let a = oldest.author();
+        let author = git2::Signature::new(
+            &lossy(a.name_bytes()),
+            &lossy(a.email_bytes()),
+            &a.when(),
+        )
+        .map_err(|e| e.to_string())?;
+        let tree = newest.tree().map_err(|e| e.to_string())?;
+        let squash = repo
+            .commit(None, &author, &committer, &message, &tree, &[&base])
+            .map_err(|e| e.to_string())?;
+
+        // Replay everything above the squashed range onto the new commit and
+        // move the branch. The CLI brings rebase's own safety net: it refuses
+        // to start on a dirty worktree, and --rebase-merges preserves any
+        // descendant merge topology. A no-op replay (newest == HEAD) simply
+        // moves the branch to the squash commit.
+        let res = run_git(
+            &repo_path,
+            &[
+                "rebase",
+                "--rebase-merges",
+                "--onto",
+                &squash.to_string(),
+                &newest.id().to_string(),
+            ],
+        );
+        if res.ok {
+            Ok(())
+        } else {
+            let _ = run_git(&repo_path, &["rebase", "--abort"]);
+            Err(if res.output.is_empty() {
+                "git rebase failed".to_string()
+            } else {
+                res.output
+            })
+        }
+    })
+    .await
+}
+
+/// All local + remote branches (locals first, each alphabetical) for the
+/// commit-graph branch filter.
+#[tauri::command]
+pub async fn git_list_refs(repo_path: String) -> Result<Vec<RefLabel>, String> {
+    blocking(move || {
+        let repo = open_repo(&repo_path)?;
+        let mut out: Vec<RefLabel> = Vec::new();
+        if let Ok(refs) = repo.references() {
+            for r in refs.flatten() {
+                let name = lossy(r.shorthand_bytes());
+                if r.is_branch() {
+                    out.push(RefLabel {
+                        name,
+                        kind: "local".to_string(),
+                    });
+                } else if r.is_remote() {
+                    // Skip the symbolic "origin/HEAD"-style entries.
+                    if r.symbolic_target_bytes().is_some() || name.ends_with("/HEAD") {
+                        continue;
+                    }
+                    out.push(RefLabel {
+                        name,
+                        kind: "remote".to_string(),
+                    });
+                }
+            }
+        }
+        out.sort_by_key(|r| (r.kind != "local", r.name.to_lowercase()));
+        Ok(out)
     })
     .await
 }
