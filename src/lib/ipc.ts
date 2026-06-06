@@ -242,6 +242,14 @@ export const gitSquash = (repoPath: string, oids: string[]): Promise<void> =>
 export const gitListRefs = (repoPath: string): Promise<RefLabel[]> =>
   invoke("git_list_refs", { repoPath });
 
+/**
+ * Generate a commit message from the staged diff via the `claude` CLI
+ * (print mode, Sonnet). Slow (an LLM round-trip) — show progress in the UI.
+ * Rejects when nothing is staged or the CLI is unavailable/fails.
+ */
+export const gitGenerateCommitMessage = (repoPath: string): Promise<string> =>
+  invoke("git_generate_commit_message", { repoPath });
+
 // ---------------------------------------------------------------------------
 // FS commands
 // ---------------------------------------------------------------------------

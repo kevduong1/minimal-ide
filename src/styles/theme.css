@@ -15,13 +15,11 @@
   --bg-input: #121419;
   --bg-hover: rgba(255, 255, 255, 0.055);
   --bg-active: rgba(255, 255, 255, 0.09);
-  --bg-selected: rgba(47, 129, 247, 0.22);
   --bg-overlay: #232730;
 
   /* borders */
   --border: #2a2e37;
   --border-subtle: #23262e;
-  --focus-ring: #2f81f7;
 
   /* text */
   --fg: #d4d8e0;
@@ -29,12 +27,11 @@
   --fg-faint: #6b7280;
   --fg-inverse: #ffffff;
 
-  /* accent */
-  --accent: #2f81f7;
-  --accent-hover: #4a93f8;
-  --accent-muted: rgba(47, 129, 247, 0.35);
-  --button-bg: #2f6fd0;
-  --button-hover: #3d7fe0;
+  /* accent — App.tsx overrides --accent on the .app root with the active
+     project's palette color (lib/projectColors.ts); --accent-default is the
+     fixed base for scopes that opt out of project coloring (commit graph) */
+  --accent-default: #2f81f7;
+  --accent: var(--accent-default);
   --button-fg: #ffffff;
   --danger: #e5534b;
   --warning: #e3b341;
@@ -55,6 +52,17 @@
   --diff-del-bg: rgba(229, 83, 75, 0.14);
   --diff-del-gutter: rgba(229, 83, 75, 0.4);
   --diff-change-bg: rgba(47, 129, 247, 0.12);
+
+  /* per-project accent palette (assignment cycled by lib/projectColors.ts;
+     index 0 = the default blue, so the first project looks like today) */
+  --project-0: #2f81f7;
+  --project-1: #a371f7;
+  --project-2: #3fb950;
+  --project-3: #f0883e;
+  --project-4: #db61a2;
+  --project-5: #39c5cf;
+  --project-6: #e3b341;
+  --project-7: #ff7b72;
 
   /* commit graph lane palette (cycled by lane index) */
   --graph-0: #2f81f7;
@@ -77,6 +85,23 @@
   --titlebar-height: 38px;
   --statusbar-height: 24px;
   --row-height: 24px;
+}
+
+/* Accent-derived family. A custom property substitutes var() where it is
+   DEFINED (not where it's used), so this block must be (re)declared on every
+   scope whose --accent differs from its parent's: :root (the default), .app
+   (the per-project override from App.tsx), and .accent-scope — the hook for
+   subtrees that re-pin --accent (e.g. .git-graph pins it back to
+   --accent-default so the graph keeps its own color system). */
+:root,
+.app,
+.accent-scope {
+  --accent-hover: color-mix(in srgb, var(--accent) 88%, #ffffff);
+  --accent-muted: color-mix(in srgb, var(--accent) 35%, transparent);
+  --bg-selected: color-mix(in srgb, var(--accent) 22%, transparent);
+  --focus-ring: var(--accent);
+  --button-bg: color-mix(in srgb, var(--accent) 84%, #000000);
+  --button-hover: color-mix(in srgb, var(--accent) 90%, #000000);
 }
 
 * {

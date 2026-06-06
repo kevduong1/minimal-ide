@@ -1,0 +1,228 @@
+/* Generic dockable terminal grid (Dock.tsx): split/group tree, per-group tab
+   strips, drag-and-drop chrome. Flavor styling (badges, project rings) lives
+   with the wrappers (AgentDock.css). */
+
+.dock-root {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --- layout tree ------------------------------------------------------- */
+
+.dock-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.dock-split.row {
+  flex-direction: row;
+}
+.dock-split.column {
+  flex-direction: column;
+}
+
+/* flex-grow carries the split fraction (set inline); basis 0 distributes
+   the space exactly proportionally */
+.dock-cell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dock-divider {
+  flex-shrink: 0;
+  background: var(--border);
+  position: relative; /* hosts the absolutely-positioned Resizer */
+  z-index: 5;
+}
+.dock-split.row > .dock-divider {
+  width: 1px;
+}
+.dock-split.column > .dock-divider {
+  height: 1px;
+}
+
+/* --- groups ------------------------------------------------------------ */
+
+.dock-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dock-strip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 27px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  position: relative; /* offsetParent for the insertion caret */
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dock-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --- tabs --------------------------------------------------------------- */
+
+.dock-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 3px 0 7px;
+  border-radius: 5px;
+  color: var(--fg-dim);
+  font-size: var(--font-size-sm);
+  max-width: 180px;
+  flex-shrink: 0;
+  cursor: default;
+}
+.dock-tab:hover {
+  background: var(--bg-hover);
+}
+.dock-tab.active {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+.dock-tab > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.dock-tab-rename {
+  width: 110px;
+  height: 17px;
+  padding: 0 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--focus-ring);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.dock-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: inherit;
+  opacity: 0;
+  flex-shrink: 0;
+}
+.dock-tab:hover .dock-tab-close {
+  opacity: 1;
+}
+.dock-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.dock-tab-close svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* --- panes --------------------------------------------------------------- */
+
+.dock-pane {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+/* Focus/project rings paint on an ::after overlay ABOVE the pane content —
+   an inset shadow on the pane itself is occluded by the opaque xterm canvas
+   (which runs flush to the right edge: .xterm has no right padding). The
+   geometry is shared here; flavor CSS (AgentDock.css .active-project) owns
+   its own shadow colors. */
+.dock-pane.focused::after,
+.dock-pane.active-project::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6; /* above xterm's layers, below the badge (7) / drop overlay (8) */
+}
+/* Active tab of the dock's active group. */
+.dock-pane.focused::after {
+  box-shadow: inset 0 0 0 1px var(--accent-muted);
+}
+
+.dock-pane-host {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* --- drag-and-drop chrome (all pointer-events:none — the hit test relies
+       on elementFromPoint seeing through it) ----------------------------- */
+
+.dock-caret {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.dock-drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-selected);
+  border: 1px solid var(--accent-muted);
+  pointer-events: none;
+  z-index: 8;
+}
+.dock-drop-overlay.left {
+  right: 50%;
+}
+.dock-drop-overlay.right {
+  left: 50%;
+}
+.dock-drop-overlay.top {
+  bottom: 50%;
+}
+.dock-drop-overlay.bottom {
+  top: 50%;
+}
+
+.dock-ghost {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 5px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--accent-muted);
+  color: var(--fg);
+  font-size: var(--font-size-sm);
+  max-width: 200px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::{Component, Path};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use git2::build::CheckoutBuilder;
 use git2::{
@@ -929,6 +929,104 @@ pub async fn git_pull(repo_path: String) -> Result<GitOpResult, String> {
 pub async fn git_push(repo_path: String) -> Result<GitOpResult, String> {
     blocking(move || {
         Ok(run_git(&repo_path, &["push"]))
+    })
+    .await
+}
+
+/// Diffs larger than this are truncated before being sent to the model — a
+/// multi-MB staged diff would blow the prompt budget without improving the
+/// message.
+const MAX_PROMPT_DIFF_BYTES: usize = 100 * 1024;
+
+/// Generate a commit message from the staged diff by piping it to the
+/// `claude` CLI in print mode (Sonnet). Invoked through the user's login
+/// shell so `claude` resolves on PATH even when the app was launched from
+/// Finder, and with cwd at the repo root so the CLI picks up project context
+/// (CLAUDE.md). Returns the message text.
+#[tauri::command]
+pub async fn git_generate_commit_message(repo_path: String) -> Result<String, String> {
+    blocking(move || {
+        let diff = run_git(&repo_path, &["diff", "--cached", "--no-color"]);
+        if !diff.ok {
+            return Err(diff.output);
+        }
+        if diff.output.trim().is_empty() {
+            return Err("No staged changes to generate a message from.".to_string());
+        }
+
+        // Recent subjects nudge the model toward this repo's commit style.
+        let log = run_git(&repo_path, &["log", "--format=%s", "-n", "10"]);
+
+        let mut prompt = String::from(
+            "Generate a Git commit message for the staged changes below.\n\n\
+             Use the recent commit subjects as the style guide — unless they are too \
+             terse or uninformative to be worth imitating, in which case prefer the \
+             format below. Capture the intent of the change first, then summarize the \
+             main updates as quick bullets when useful.\n\n\
+             Output format:\n\
+             <imperative subject line>\n\n\
+             - <feature, behavior change, or important implementation detail>\n\
+             - <feature, behavior change, or important implementation detail>\n\
+             - <feature, behavior change, or important implementation detail>\n\n\
+             Rules:\n\
+             - Subject should describe the purpose of the change, not the files touched\n\
+             - Use bullets only if there are multiple meaningful updates\n\
+             - Keep the body to 2-5 bullets\n\
+             - Avoid vague subjects like \"Update code\" or \"Fix changes\"\n\
+             - Avoid implementation noise unless it matters\n\
+             - No markdown fences, headings, labels, or explanations\n\n\
+             Return ONLY the commit message text.\n\n",
+        );
+        if log.ok && !log.output.is_empty() {
+            prompt.push_str("Recent commit subjects:\n");
+            prompt.push_str(&log.output);
+            prompt.push_str("\n\n");
+        }
+        prompt.push_str("Staged diff:\n");
+        if diff.output.len() > MAX_PROMPT_DIFF_BYTES {
+            let mut end = MAX_PROMPT_DIFF_BYTES;
+            while !diff.output.is_char_boundary(end) {
+                end -= 1;
+            }
+            prompt.push_str(&diff.output[..end]);
+            prompt.push_str("\n... (diff truncated)");
+        } else {
+            prompt.push_str(&diff.output);
+        }
+
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let mut child = Command::new(shell)
+            .args(["-lc", "claude -p --model claude-sonnet-4-6"])
+            .current_dir(&repo_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to run claude: {e}"))?;
+
+        // Feed the prompt from a thread: claude reads all of stdin before
+        // writing output, but writing + waiting from one thread could still
+        // deadlock if the child ever fills its stderr pipe mid-read.
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = stdin.write_all(prompt.as_bytes());
+        });
+
+        let out = child
+            .wait_with_output()
+            .map_err(|e| format!("failed to run claude: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let detail = if stderr.trim().is_empty() { stdout } else { stderr };
+            return Err(format!("claude failed: {}", detail.trim()));
+        }
+        let message = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if message.is_empty() {
+            return Err("claude returned an empty message".to_string());
+        }
+        Ok(message)
     })
     .await
 }

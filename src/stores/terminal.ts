@@ -1,25 +1,23 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import * as dock from "../lib/dockTree";
+import { type DropEdge } from "../lib/dockTree";
 
 /**
- * Pure UI-state model for the integrated terminal panel: tabs, and splits
- * (panes) within each tab. xterm/PTY lifecycle lives in the components,
- * keyed by pane id — this store never touches xterm or IPC.
+ * Pure UI-state model for a workspace's terminal dock: the same dockable
+ * layout tree as the global agent dock (lib/dockTree), but per workspace and
+ * not persisted. xterm/PTY lifecycle lives in the session registry
+ * (lib/termSessions) — this store never touches xterm or IPC; UI code closes
+ * terminals via the component glue that disposes the session first.
+ *
+ * Workspace terminals are plain shells: no activity tracking, no
+ * TERM_PROGRAM masquerade. Agent terminals live in stores/agentTerminals,
+ * which reuses the activity types below.
  */
-/**
- * "agent" tabs run the activity tracker (busy/attention indicators) and get
- * the notification-capable TERM_PROGRAM masquerade; "plain" tabs are bare
- * terminals — no output watching, no timers, no masquerade.
- */
-export type TerminalKind = "plain" | "agent";
-
-export interface TerminalTab {
+export interface WorkspaceTerminal {
+  /** Doubles as the PTY id. */
   id: string;
-  kind: TerminalKind;
-  /** Display title, e.g. "Terminal 1" / "Agent 1". */
+  /** Tab label, e.g. "Terminal 1"; renameable. */
   title: string;
-  /** Pane ids, left -> right. */
-  paneIds: string[];
-  activePaneId: string;
 }
 
 /** Live activity of one pane, reported by its tracker (lib/terminalActivity). */
@@ -47,7 +45,7 @@ export const aggregateActivity = (
 };
 
 /** Drop activity entries for removed panes (no-op when none are present). */
-const pruneActivity = (
+export const pruneActivity = (
   paneActivity: Record<string, PaneActivity>,
   paneIds: string[],
 ): Record<string, PaneActivity> => {
@@ -57,133 +55,85 @@ const pruneActivity = (
   return next;
 };
 
-export interface TerminalState {
-  tabs: TerminalTab[];
-  activeTabId: string | null;
-  /** Sparse per-pane activity — only panes that are busy / need attention. */
-  paneActivity: Record<string, PaneActivity>;
-
-  newTab: (kind?: TerminalKind) => void;
-  closeTab: (id: string) => void;
-  setActiveTab: (id: string) => void;
-  /** Inserts a new pane right after the active pane of the active tab. */
-  splitActivePane: () => void;
-  /**
-   * Removes a pane. Removing the last pane of a tab closes the tab;
-   * closing the last tab leaves an empty tab list.
-   */
-  closePane: (tabId: string, paneId: string) => void;
-  setActivePane: (tabId: string, paneId: string) => void;
-  /** Reported by the pane's activity tracker; idle panes are dropped. */
-  setPaneActivity: (paneId: string, activity: PaneActivity) => void;
+export interface TerminalState extends dock.DockState<WorkspaceTerminal> {
+  /** New terminal as a tab of the active group (or a fresh root group). */
+  newTerminal: () => string;
+  /** New terminal in its own group, split right of the active group. */
+  splitActive: () => string;
+  /** Structural removal only — session disposal is the caller's job. */
+  closeTerminal: (id: string) => void;
+  setActiveTerminal: (groupId: string, terminalId: string) => void;
+  setActiveGroup: (groupId: string) => void;
+  renameTerminal: (id: string, title: string) => void;
+  moveTerminal: (terminalId: string, targetGroupId: string, index: number) => void;
+  splitGroup: (terminalId: string, targetGroupId: string, edge: DropEdge) => void;
+  setSplitSizes: (splitId: string, sizes: number[]) => void;
 }
 
 export type TerminalStore = StoreApi<TerminalState>;
 
-/** Lowest unused "<prefix> N" number (resets once all such tabs are closed). */
-const nextTitleNumber = (tabs: TerminalTab[], prefix: string): number =>
-  tabs.reduce((max, t) => {
-    const m = new RegExp(`^${prefix} (\\d+)$`).exec(t.title);
+/** Lowest unused "Terminal N" number (resets once all such tabs are closed). */
+const nextTitleNumber = (terminals: Record<string, WorkspaceTerminal>): number =>
+  Object.values(terminals).reduce((max, t) => {
+    const m = /^Terminal (\d+)$/.exec(t.title);
     return m ? Math.max(max, Number(m[1])) : max;
   }, 0) + 1;
 
+/** Applies a dockTree op result; `s` is returned untouched on op no-ops. */
+const applied = (
+  s: TerminalState,
+  next: dock.DockState<WorkspaceTerminal>,
+): Partial<TerminalState> | TerminalState =>
+  next === s
+    ? s
+    : { terminals: next.terminals, root: next.root, activeGroupId: next.activeGroupId };
+
 /** Per-workspace terminal store; created by the workspaces store. */
 export const createTerminalStore = (): TerminalStore =>
-  createStore<TerminalState>((set, get) => ({
-  tabs: [],
-  activeTabId: null,
-  paneActivity: {},
+  createStore<TerminalState>((set) => ({
+    terminals: {},
+    root: null,
+    activeGroupId: null,
 
-  newTab: (kind = "plain") =>
-    set((s) => {
-      const paneId = crypto.randomUUID();
-      const prefix = kind === "agent" ? "Agent" : "Terminal";
-      const tab: TerminalTab = {
-        id: crypto.randomUUID(),
-        kind,
-        title: `${prefix} ${nextTitleNumber(s.tabs, prefix)}`,
-        paneIds: [paneId],
-        activePaneId: paneId,
-      };
-      return { tabs: [...s.tabs, tab], activeTabId: tab.id };
-    }),
-
-  closeTab: (id) =>
-    set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === id);
-      if (idx === -1) return s;
-      const tabs = s.tabs.filter((t) => t.id !== id);
-      let activeTabId = s.activeTabId;
-      if (activeTabId === id) {
-        activeTabId = tabs.length
-          ? tabs[Math.min(idx, tabs.length - 1)].id
-          : null;
-      }
-      return {
-        tabs,
-        activeTabId,
-        paneActivity: pruneActivity(s.paneActivity, s.tabs[idx].paneIds),
-      };
-    }),
-
-  setActiveTab: (id) =>
-    set((s) => (s.tabs.some((t) => t.id === id) ? { activeTabId: id } : s)),
-
-  splitActivePane: () =>
-    set((s) => {
-      const tab = s.tabs.find((t) => t.id === s.activeTabId);
-      if (!tab) return s;
-      const paneId = crypto.randomUUID();
-      const paneIds = [...tab.paneIds];
-      paneIds.splice(paneIds.indexOf(tab.activePaneId) + 1, 0, paneId);
-      return {
-        tabs: s.tabs.map((t) =>
-          t.id === tab.id ? { ...t, paneIds, activePaneId: paneId } : t,
+    newTerminal: () => {
+      const id = crypto.randomUUID();
+      set((s) =>
+        applied(
+          s,
+          dock.addTerminal(s, {
+            id,
+            title: `Terminal ${nextTitleNumber(s.terminals)}`,
+          }),
         ),
-      };
-    }),
+      );
+      return id;
+    },
 
-  closePane: (tabId, paneId) => {
-    const tab = get().tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.paneIds.includes(paneId)) return;
-    if (tab.paneIds.length <= 1) {
-      get().closeTab(tabId);
-      return;
-    }
-    set((s) => ({
-      tabs: s.tabs.map((t) => {
-        if (t.id !== tabId) return t;
-        const idx = t.paneIds.indexOf(paneId);
-        const paneIds = t.paneIds.filter((p) => p !== paneId);
-        const activePaneId =
-          t.activePaneId === paneId
-            ? paneIds[Math.min(Math.max(idx - 1, 0), paneIds.length - 1)]
-            : t.activePaneId;
-        return { ...t, paneIds, activePaneId };
-      }),
-      paneActivity: pruneActivity(s.paneActivity, [paneId]),
-    }));
-  },
+    splitActive: () => {
+      const id = crypto.randomUUID();
+      set((s) => {
+        const target = s.activeGroupId;
+        // Place the tab first, then tear it out to the right of its group —
+        // on an empty dock the add alone is the whole story.
+        let next = dock.addTerminal(s, {
+          id,
+          title: `Terminal ${nextTitleNumber(s.terminals)}`,
+        });
+        if (target) next = dock.splitGroup(next, id, target, "right");
+        return applied(s, next);
+      });
+      return id;
+    },
 
-  setActivePane: (tabId, paneId) =>
-    set((s) => {
-      const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab || !tab.paneIds.includes(paneId)) return s;
-      return {
-        activeTabId: tabId,
-        tabs: s.tabs.map((t) =>
-          t.id === tabId ? { ...t, activePaneId: paneId } : t,
-        ),
-      };
-    }),
-
-  setPaneActivity: (paneId, activity) =>
-    set((s) => {
-      const keep = activity.busy || activity.attention;
-      if (!keep && !(paneId in s.paneActivity)) return s;
-      const paneActivity = { ...s.paneActivity };
-      if (keep) paneActivity[paneId] = activity;
-      else delete paneActivity[paneId];
-      return { paneActivity };
-    }),
+    closeTerminal: (id) => set((s) => applied(s, dock.removeTerminal(s, id))),
+    setActiveTerminal: (groupId, terminalId) =>
+      set((s) => applied(s, dock.setActiveTerminal(s, groupId, terminalId))),
+    setActiveGroup: (groupId) => set((s) => applied(s, dock.setActiveGroup(s, groupId))),
+    renameTerminal: (id, title) => set((s) => applied(s, dock.renameTerminal(s, id, title))),
+    moveTerminal: (terminalId, targetGroupId, index) =>
+      set((s) => applied(s, dock.moveTerminal(s, terminalId, targetGroupId, index))),
+    splitGroup: (terminalId, targetGroupId, edge) =>
+      set((s) => applied(s, dock.splitGroup(s, terminalId, targetGroupId, edge))),
+    setSplitSizes: (splitId, sizes) =>
+      set((s) => applied(s, dock.setSplitSizes(s, splitId, sizes))),
   }));

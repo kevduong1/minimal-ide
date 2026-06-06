@@ -6,7 +6,11 @@ import {
   useWorkspacesStore,
   type Workspace,
 } from "../stores/workspaces";
-import { aggregateActivity } from "../stores/terminal";
+import {
+  selectWorkspaceActivity,
+  useAgentTerminalsStore,
+} from "../stores/agentTerminals";
+import { projectColorVar } from "../lib/projectColors";
 import {
   ActivityGlyph,
   IcBranch,
@@ -34,10 +38,11 @@ function WorkspaceTab({
 }) {
   const setActive = useWorkspacesStore((s) => s.setActive);
   const closeWorkspace = useWorkspacesStore((s) => s.closeWorkspace);
-  // Terminal activity trickles up: spinner while a terminal works, pulsing
-  // dot when one is waiting on the user (e.g. Claude Code asking a question).
-  const activity = useStore(ws.terminal, (s) =>
-    aggregateActivity(s.paneActivity),
+  // Agent-terminal activity trickles up from the global dock: spinner while
+  // one of this project's agents works, pulsing dot when one is waiting on
+  // the user (e.g. Claude Code asking a question).
+  const activity = useAgentTerminalsStore((s) =>
+    selectWorkspaceActivity(s, ws.path),
   );
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -63,7 +68,13 @@ function WorkspaceTab({
         }
       }}
     >
-      <ActivityGlyph activity={activity} idle={<IcFolder />} />
+      {/* Idle glyph tinted in the project's color (identity carrier); the
+          busy/attention glyphs keep their semantic colors. The inline style
+          outranks Titlebar.css's .ws-tab > svg fg-dim rule. */}
+      <ActivityGlyph
+        activity={activity}
+        idle={<IcFolder style={{ color: projectColorVar(ws.path) }} />}
+      />
       <span className="truncate">
         {ws.name}
         {ambiguous && <span className="ws-tab-dir"> · {parentDir(ws.path)}</span>}

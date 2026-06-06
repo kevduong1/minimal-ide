@@ -1,6 +1,11 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { DiffKind, StatusCode } from "../lib/ipc";
+import { useUiStore } from "./ui";
+
+/** Opening a tab must actually show it: a maximized bottom panel covers the
+    whole editor column, so drop it back to its normal height. */
+const revealEditor = () => useUiStore.getState().setPanelMaximized(false);
 
 export interface DiffRequest {
   repoPath: string;
@@ -55,6 +60,7 @@ export const createEditorStore = (): EditorStore =>
         });
       }
       set({ activeTabId: id });
+      revealEditor();
     },
 
     openDiff: (req) => {
@@ -75,6 +81,7 @@ export const createEditorStore = (): EditorStore =>
         });
       }
       set({ activeTabId: id });
+      revealEditor();
     },
 
     closeTab: (id) => {

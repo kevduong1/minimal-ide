@@ -10,8 +10,9 @@
  */
 import { createContext, useContext } from "react";
 import { create, useStore } from "zustand";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { gitOpen } from "../lib/ipc";
+import { disposeSession } from "../lib/termSessions";
 import { createRepoStore, type RepoState, type RepoStore } from "./repo";
 import { createEditorStore, type EditorState, type EditorStore } from "./editor";
 import {
@@ -139,7 +140,13 @@ export const useWorkspacesStore = create<WorkspacesState>((set, get) => ({
       if (!ok) return;
     }
     ws.repo.getState().dispose();
-    // Unmounting the workspace's terminal panes kills their PTYs.
+    // Kill this workspace's terminal shells explicitly: registry sessions
+    // outlive React unmounts by design (drag-and-drop survival). Agent
+    // terminals are NOT touched — they live in the global dock, keep
+    // running, and just show as disconnected.
+    for (const id of Object.keys(ws.terminal.getState().terminals)) {
+      disposeSession(id);
+    }
     set((s) => {
       const idx = s.workspaces.findIndex((w) => w.path === path);
       if (idx === -1) return s;
@@ -165,6 +172,28 @@ export const useWorkspacesStore = create<WorkspacesState>((set, get) => ({
       return next;
     }),
 }));
+
+/**
+ * Agent-terminal navigation: activate the terminal's project, reopening it
+ * if it was closed (a disconnected terminal's repo may even be gone — open
+ * failures surface via dialog, since no repo store exists to carry the
+ * error for an unopened path).
+ */
+export async function switchToProject(path: string): Promise<void> {
+  const { workspaces, setActive, openWorkspace } = useWorkspacesStore.getState();
+  if (workspaces.some((w) => w.path === path)) {
+    setActive(path);
+    return;
+  }
+  try {
+    await openWorkspace(path);
+  } catch (e) {
+    await message(`Cannot open project:\n${String(e)}`, {
+      title: "Agent Terminal",
+      kind: "error",
+    });
+  }
+}
 
 /**
  * Reopen last session's workspaces. A saved-but-empty session stays empty

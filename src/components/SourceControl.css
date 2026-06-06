@@ -40,20 +40,33 @@
   padding: 0 8px 8px;
 }
 
+.sc-commit-input-wrap {
+  position: relative;
+}
+
 .commit-input {
   width: 100%;
+  display: block;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--fg);
   font-size: var(--font-size);
   line-height: 18px;
-  padding: 5px 8px;
+  padding: 5px 30px 5px 8px; /* room for the generate button */
   resize: none;
   outline: none;
   overflow-y: auto;
   min-height: 30px;
   max-height: 120px; /* 6 lines */
+}
+
+/* generate-with-Claude button, pinned to the input's top-right corner
+   (centered in the single-line 30px input; stays top-pinned as it grows) */
+.sc-generate-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
 }
 .commit-input:focus {
   border-color: var(--focus-ring);

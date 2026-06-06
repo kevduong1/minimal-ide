@@ -11,15 +11,6 @@
   min-height: 0;
 }
 
-/* one per open repo; inactive ones are hidden (display:none) but stay
-   mounted so terminals keep running and editor state survives switches */
-.workspace {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
 .app-center {
   display: flex;
   flex-direction: column;
@@ -33,17 +24,29 @@
   background: var(--bg-editor);
 }
 
-.app-terminal {
+/* one per open repo; inactive ones are hidden (display:none) but stay
+   mounted so editor buffers and scroll state survive switches */
+.workspace-editor {
+  height: 100%;
+  min-width: 0;
+}
+
+/* Global bottom panel (Terminal / Agent Terminals groups), under the editor
+   column — the sidebar keeps the full app height beside it. */
+.app-panel {
   flex-shrink: 0;
   /* The inline height is a remembered preference, not a contract: after a
      window shrink it could exceed the center column and push the prompt
-     rows off-screen with nothing re-fitting them (no layout change at the
-     xterm hosts = no ResizeObserver). Clamping here shrinks the panel with
-     the window and lets the panes' observers refit. */
+     rows off-screen with nothing re-fitting the terminals (no layout change
+     at the xterm hosts = no ResizeObserver). Clamping here shrinks the
+     panel with the window and lets the panes' observers refit. */
   max-height: 100%;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
-  position: relative;
+  position: relative; /* the drag-resizer anchors to the top edge */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .app-sidebar {

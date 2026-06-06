@@ -94,6 +94,7 @@
 .statusbar-toggle {
   width: 20px;
   height: 20px;
+  position: relative; /* anchors the attention dot */
 }
 .statusbar-toggle svg {
   width: 13px;
@@ -101,4 +102,16 @@
 }
 .statusbar-toggle.active {
   color: var(--fg);
+}
+
+/* Agent terminal waiting on the user while the panel is hidden. */
+.statusbar-attention-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  animation: attention-pulse 1.6s ease-in-out infinite;
 }

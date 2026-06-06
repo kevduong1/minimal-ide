@@ -10,7 +10,12 @@ import {
 import { confirm, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import { useShallow } from "zustand/react/shallow";
 import { useEditor, useRepo, useWorkspace } from "../stores/workspaces";
-import { gitListRefs, type FileStatus, type RefLabel } from "../lib/ipc";
+import {
+  gitGenerateCommitMessage,
+  gitListRefs,
+  type FileStatus,
+  type RefLabel,
+} from "../lib/ipc";
 import { statusColor, statusLetter, statusPaths } from "../lib/status";
 import GitGraph from "./GitGraph";
 import {
@@ -30,6 +35,8 @@ import {
   IcPush,
   IcRefresh,
   IcRemote,
+  IcSparkle,
+  IcSpinner,
   IcSync,
   IcTrash,
 } from "./icons";
@@ -208,6 +215,7 @@ export default function SourceControl() {
 
   const [commitMsg, setCommitMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [stagedOpen, setStagedOpen] = useState(true);
   const [changesOpen, setChangesOpen] = useState(true);
@@ -280,6 +288,19 @@ export default function SourceControl() {
     },
     [commitMsg, busy, ws],
   );
+
+  const onGenerateMsg = useCallback(async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      setCommitMsg(await gitGenerateCommitMessage(ws.path));
+      taRef.current?.focus();
+    } catch (e) {
+      await messageDialog(String(e), { title: "Generate Commit Message" });
+    } finally {
+      setGenerating(false);
+    }
+  }, [generating, ws]);
 
   const onCommitKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.metaKey && e.key === "Enter") {
@@ -410,16 +431,30 @@ export default function SourceControl() {
 
       {/* commit box */}
       <div className="sc-commit-box">
-        <textarea
-          ref={taRef}
-          className="commit-input"
-          rows={1}
-          placeholder={`Message (Cmd+Enter to commit on "${branch}")`}
-          value={commitMsg}
-          onChange={(e) => setCommitMsg(e.target.value)}
-          onKeyDown={onCommitKeyDown}
-          spellCheck={false}
-        />
+        <div className="sc-commit-input-wrap">
+          <textarea
+            ref={taRef}
+            className="commit-input"
+            rows={1}
+            placeholder={`Message (Cmd+Enter to commit on "${branch}")`}
+            value={commitMsg}
+            onChange={(e) => setCommitMsg(e.target.value)}
+            onKeyDown={onCommitKeyDown}
+            spellCheck={false}
+          />
+          <button
+            className="icon-btn sc-generate-btn"
+            title={
+              staged.length === 0
+                ? "Generate Commit Message (stage changes first)"
+                : "Generate Commit Message from Staged Changes (Claude)"
+            }
+            disabled={generating || staged.length === 0}
+            onClick={() => void onGenerateMsg()}
+          >
+            {generating ? <IcSpinner className="activity-busy" /> : <IcSparkle />}
+          </button>
+        </div>
         <div className="sc-commit-row">
           <button
             className="primary-btn sc-commit-btn"

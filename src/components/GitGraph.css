@@ -1,6 +1,11 @@
 /* GitGraph — commit graph list (rail lanes, ref pills, summary, meta) */
 
+/* The graph keeps the DEFAULT accent (selection, local/HEAD pills) — its
+   multicolor lane palette clashes with per-project accent colors. The root
+   element also carries .accent-scope (theme.css) so the derived family
+   recomputes from the re-pinned base. */
 .git-graph {
+  --accent: var(--accent-default);
   display: flex;
   flex-direction: column;
   height: 100%;

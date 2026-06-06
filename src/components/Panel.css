@@ -1,0 +1,57 @@
+/* Global bottom panel chrome: group tabs + the active group's strip/actions.
+   (.app-panel itself — sizing, border — lives in styles/app.css.) */
+
+.panel-header {
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-group-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fg-faint);
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.panel-group-tab:hover {
+  color: var(--fg-dim);
+  background: var(--bg-hover);
+}
+.panel-group-tab.active {
+  color: var(--fg);
+}
+.panel-group-tab .panel-group-dot {
+  width: 9px;
+  height: 9px;
+}
+
+.panel-header-spacer {
+  flex: 1;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.panel-group-body {
+  height: 100%;
+}

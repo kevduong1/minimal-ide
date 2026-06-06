@@ -166,6 +166,19 @@ export const IcChevronDown = (props: IconProps) => (
     <path d="m3.5 6 4.5 4.5L12.5 6" />
   </Svg>
 );
+/* double chevrons: bottom-panel maximize / restore */
+export const IcChevronsUp = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m3.5 8 4.5-4.5L12.5 8" />
+    <path d="m3.5 13 4.5-4.5L12.5 13" />
+  </Svg>
+);
+export const IcChevronsDown = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m3.5 3 4.5 4.5L12.5 3" />
+    <path d="m3.5 8 4.5 4.5L12.5 8" />
+  </Svg>
+);
 export const IcPlus = (props: IconProps) => (
   <Svg {...props}>
     <path d="M8 3v10M3 8h10" />
@@ -195,6 +208,13 @@ export const IcTerminal = (props: IconProps) => (
 export const IcSparkle = (props: IconProps) => (
   <Svg {...props}>
     <path d="M8 1.5L9.7 6.3L14.5 8L9.7 9.7L8 14.5L6.3 9.7L1.5 8L6.3 6.3Z" />
+  </Svg>
+);
+/** Circle-slash — agent terminal whose project isn't open as a workspace. */
+export const IcDisconnected = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M4.2 11.8 11.8 4.2" />
   </Svg>
 );
 /** Panel split into two columns at the midline (split-editor / split-terminal). */

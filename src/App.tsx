@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "zustand";
 import { message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -11,12 +11,14 @@ import {
 } from "./stores/workspaces";
 import { useUiStore } from "./stores/ui";
 import { closeTabSafely } from "./stores/editor";
+import { projectColorVar } from "./lib/projectColors";
 import Titlebar from "./components/Titlebar";
 import StatusBar from "./components/StatusBar";
 import FileExplorer from "./components/FileExplorer";
 import SourceControl from "./components/SourceControl";
 import EditorArea from "./components/EditorArea";
-import TerminalPanel from "./components/TerminalPanel";
+import Panel from "./components/Panel";
+import { Resizer } from "./components/Resizer";
 import { IcBranch, IcFile } from "./components/icons";
 
 /** Slim far-left icon strip for switching sidebar panels. */
@@ -56,50 +58,6 @@ function ChangeCountBadge({ ws }: { ws: Workspace }) {
   );
   if (changeCount === 0) return null;
   return <span className="badge">{changeCount}</span>;
-}
-
-/** Generic drag-to-resize handle. */
-function Resizer({
-  direction,
-  onDelta,
-}: {
-  direction: "vertical" | "horizontal";
-  onDelta: (delta: number) => void;
-}) {
-  const [dragging, setDragging] = useState(false);
-  const last = useRef(0);
-
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setDragging(true);
-      last.current = direction === "vertical" ? e.clientX : e.clientY;
-
-      const onMove = (ev: MouseEvent) => {
-        const pos = direction === "vertical" ? ev.clientX : ev.clientY;
-        onDelta(pos - last.current);
-        last.current = pos;
-      };
-      const onUp = () => {
-        setDragging(false);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-      document.body.style.cursor =
-        direction === "vertical" ? "col-resize" : "row-resize";
-    },
-    [direction, onDelta],
-  );
-
-  return (
-    <div
-      className={`resizer ${direction} ${dragging ? "dragging" : ""}`}
-      onMouseDown={onMouseDown}
-    />
-  );
 }
 
 function Welcome() {
@@ -149,56 +107,31 @@ function Welcome() {
 }
 
 /**
- * One workspace's whole working surface: sidebar + editor + terminal panel.
- * EVERY workspace stays mounted; inactive ones are hidden with display:none
- * so shells keep running, xterm buffers survive, and editor/explorer state
- * is exactly as the user left it when switching back.
+ * One workspace's sidebar content / editor surface. EVERY workspace's pair
+ * stays mounted; inactive ones are hidden with display:none so editor
+ * buffers and explorer state are exactly as the user left them when
+ * switching back. (Terminals live in the global bottom panel —
+ * components/Panel.tsx.)
  */
-function WorkspaceView({ visible }: { visible: boolean }) {
+function WorkspaceSidebarContent({ visible }: { visible: boolean }) {
   const sidebarTab = useUiStore((s) => s.sidebarTab);
-  const sidebarVisible = useUiStore((s) => s.sidebarVisible);
-  const sidebarWidth = useUiStore((s) => s.sidebarWidth);
-  const setSidebarWidth = useUiStore((s) => s.setSidebarWidth);
-  const terminalVisible = useUiStore((s) => s.terminalVisible);
-  const terminalHeight = useUiStore((s) => s.terminalHeight);
-  const setTerminalHeight = useUiStore((s) => s.setTerminalHeight);
-
   return (
     <div
-      className="workspace"
+      className="app-sidebar-content"
       style={{ display: visible ? undefined : "none" }}
     >
-      {sidebarVisible && (
-        <div className="app-sidebar" style={{ width: sidebarWidth }}>
-          <div className="app-sidebar-content">
-            {sidebarTab === "explorer" ? <FileExplorer /> : <SourceControl />}
-          </div>
-          <Resizer
-            direction="vertical"
-            onDelta={(d) => setSidebarWidth(useUiStore.getState().sidebarWidth + d)}
-          />
-        </div>
-      )}
-      <div className="app-center">
-        <div className="app-editor-area">
-          <EditorArea />
-        </div>
-        <div
-          className="app-terminal"
-          style={{
-            height: terminalVisible ? terminalHeight : 0,
-            display: terminalVisible ? undefined : "none",
-          }}
-        >
-          <Resizer
-            direction="horizontal"
-            onDelta={(d) =>
-              setTerminalHeight(useUiStore.getState().terminalHeight - d)
-            }
-          />
-          <TerminalPanel />
-        </div>
-      </div>
+      {sidebarTab === "explorer" ? <FileExplorer /> : <SourceControl />}
+    </div>
+  );
+}
+
+function WorkspaceEditor({ visible }: { visible: boolean }) {
+  return (
+    <div
+      className="workspace-editor"
+      style={{ display: visible ? undefined : "none" }}
+    >
+      <EditorArea />
     </div>
   );
 }
@@ -217,7 +150,7 @@ export default function App() {
     void restoreSession();
   }, []);
 
-  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
+  const togglePanel = useUiStore((s) => s.togglePanel);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
   // global keyboard shortcuts
@@ -227,7 +160,7 @@ export default function App() {
       if (!mod) return;
       if (e.key === "`") {
         e.preventDefault();
-        toggleTerminal();
+        togglePanel();
       } else if (e.key === "b" && !e.shiftKey) {
         e.preventDefault();
         toggleSidebar();
@@ -249,24 +182,63 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleTerminal, toggleSidebar]);
+  }, [togglePanel, toggleSidebar]);
+
+  const hasWorkspaces = workspaces.length > 0;
+  const sidebarVisible = useUiStore((s) => s.sidebarVisible);
+  const sidebarWidth = useUiStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useUiStore((s) => s.setSidebarWidth);
+  const panelMaximized = useUiStore((s) => s.panelMaximized);
+
+  // The whole accent family (commit button, rings, selections — derived from
+  // --accent via color-mix in theme.css) follows the active project's color.
+  const accentStyle = activePath
+    ? ({ "--accent": projectColorVar(activePath) } as CSSProperties)
+    : undefined;
 
   return (
-    <div className="app">
+    <div className="app" style={accentStyle}>
       <Titlebar />
       <div className="app-main">
-        {workspaces.length > 0 ? (
-          <>
-            <ActivityBar />
+        {hasWorkspaces && <ActivityBar />}
+        {/* Sidebar spans the full app height; the bottom panel sits beside
+            it, under the editor column only. */}
+        {hasWorkspaces && sidebarVisible && (
+          <div className="app-sidebar" style={{ width: sidebarWidth }}>
             {workspaces.map((ws) => (
               <WorkspaceContext.Provider key={ws.path} value={ws}>
-                <WorkspaceView visible={ws.path === activePath} />
+                <WorkspaceSidebarContent visible={ws.path === activePath} />
               </WorkspaceContext.Provider>
             ))}
-          </>
-        ) : (
-          <Welcome />
+            <Resizer
+              direction="vertical"
+              onDelta={(d) =>
+                setSidebarWidth(useUiStore.getState().sidebarWidth + d)
+              }
+            />
+          </div>
         )}
+        <div className="app-center">
+          {hasWorkspaces ? (
+            // Hidden (not unmounted) while the panel is maximized — editor
+            // buffers/scroll state follow the workspace-switch survival rule.
+            <div
+              className="app-editor-area"
+              style={{ display: panelMaximized ? "none" : undefined }}
+            >
+              {workspaces.map((ws) => (
+                <WorkspaceContext.Provider key={ws.path} value={ws}>
+                  <WorkspaceEditor visible={ws.path === activePath} />
+                </WorkspaceContext.Provider>
+              ))}
+            </div>
+          ) : (
+            <Welcome />
+          )}
+          {/* Mounted in a stable position for either branch above, so the
+              docks (and their shells) survive the 0↔N workspace transition. */}
+          <Panel />
+        </div>
       </div>
       <StatusBar />
     </div>

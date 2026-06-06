@@ -1,6 +1,8 @@
 import { useStore } from "zustand";
 import { useActiveWorkspace, type Workspace } from "../stores/workspaces";
 import { useUiStore } from "../stores/ui";
+import { useAgentTerminalsStore } from "../stores/agentTerminals";
+import { aggregateActivity } from "../stores/terminal";
 import { IcBranch, IcSidebar, IcTerminal } from "./icons";
 import "./StatusBar.css";
 
@@ -52,10 +54,15 @@ function RepoStatus({ ws }: { ws: Workspace }) {
 export default function StatusBar() {
   const ws = useActiveWorkspace();
 
-  const terminalVisible = useUiStore((s) => s.terminalVisible);
+  const panelVisible = useUiStore((s) => s.panelVisible);
   const sidebarVisible = useUiStore((s) => s.sidebarVisible);
-  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
+  const togglePanel = useUiStore((s) => s.togglePanel);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  // A waiting agent terminal has no visible indicator when the panel is
+  // hidden and its project's titlebar tab is closed — surface it here.
+  const agentAttention = useAgentTerminalsStore(
+    (s) => aggregateActivity(s.paneActivity) === "attention",
+  );
 
   return (
     <div className="statusbar">
@@ -69,11 +76,14 @@ export default function StatusBar() {
         )}
         <span className="statusbar-divider" />
         <button
-          className={`icon-btn statusbar-toggle ${terminalVisible ? "active" : ""}`}
-          title="Toggle terminal panel"
-          onClick={toggleTerminal}
+          className={`icon-btn statusbar-toggle ${panelVisible ? "active" : ""}`}
+          title="Toggle panel"
+          onClick={togglePanel}
         >
           <IcTerminal />
+          {!panelVisible && agentAttention && (
+            <span className="statusbar-attention-dot" />
+          )}
         </button>
         <button
           className={`icon-btn statusbar-toggle ${sidebarVisible ? "active" : ""}`}

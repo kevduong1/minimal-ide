@@ -45,6 +45,7 @@ fn main() {
             git::git_create_branch,
             git::git_squash,
             git::git_list_refs,
+            git::git_generate_commit_message,
             // fs
             fsops::fs_read_dir,
             fsops::fs_read_file,

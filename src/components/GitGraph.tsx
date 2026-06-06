@@ -684,7 +684,7 @@ export default function GitGraph() {
 
   if (empty) {
     return (
-      <div className="git-graph">
+      <div className="git-graph accent-scope">
         <div className="gg-empty">No commits yet</div>
       </div>
     );
@@ -838,7 +838,7 @@ export default function GitGraph() {
   };
 
   return (
-    <div className="git-graph">
+    <div className="git-graph accent-scope">
       <div className="gg-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="gg-spacer" style={{ height: items.length * ROW }}>
           {visible}
