@@ -12,6 +12,7 @@ import { createContext, useContext } from "react";
 import { create, useStore } from "zustand";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { gitOpen } from "../lib/ipc";
+import { projectDisplayName } from "../lib/projectNames";
 import { disposeSession } from "../lib/termSessions";
 import { createRepoStore, type RepoState, type RepoStore } from "./repo";
 import { createEditorStore, type EditorState, type EditorStore } from "./editor";
@@ -26,10 +27,9 @@ const RECENT_KEY = "minimal-ide:recent-repos";
 const SESSION_KEY = "minimal-ide:workspaces";
 
 export interface Workspace {
-  /** Workdir root (canonical, from git_open). Doubles as the workspace id. */
+  /** Workdir root (canonical, from git_open). Doubles as the workspace id.
+   *  Display names come from lib/projectNames (basename, user-renameable). */
   path: string;
-  /** Display name: last path segment. */
-  name: string;
   repo: RepoStore;
   editor: EditorStore;
   terminal: TerminalStore;
@@ -107,7 +107,6 @@ export const useWorkspacesStore = create<WorkspacesState>((set, get) => ({
     }
     const ws: Workspace = {
       path: root,
-      name: root.split("/").filter(Boolean).pop() ?? root,
       repo: createRepoStore(root),
       editor: createEditorStore(),
       terminal: createTerminalStore(),
@@ -135,7 +134,7 @@ export const useWorkspacesStore = create<WorkspacesState>((set, get) => ({
     ).length;
     if (dirtyCount > 0) {
       const ok = await confirm(
-        `"${ws.name}" has ${dirtyCount} unsaved ${
+        `"${projectDisplayName(ws.path)}" has ${dirtyCount} unsaved ${
           dirtyCount === 1 ? "file" : "files"
         } whose changes will be lost.`,
         { title: "Close Workspace?", kind: "warning" },

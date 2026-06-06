@@ -16,6 +16,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getSession } from "./termSessions";
+import { currentZoom } from "./zoom";
 
 /** Characters that survive a POSIX shell unquoted (conservative allowlist). */
 const SHELL_SAFE = /^[A-Za-z0-9%+,./:=@_-]+$/;
@@ -46,9 +47,14 @@ const setHovered = (pane: HTMLElement | null) => {
  * devicePixelRatio would halve retina coordinates: drops land in the wrong
  * split pane and the top of every pane goes dead. Re-verify on Tauri
  * upgrades — if upstream starts scaling, this needs the division back.
+ *
+ * App zoom (lib/zoom.ts → WKWebView.pageZoom) DOES shift the mapping: the
+ * CSS viewport that elementFromPoint addresses is points / pageZoom, so the
+ * webview-point coordinates need that division.
  */
 const paneAt = (pos: { x: number; y: number }): HTMLElement | null => {
-  const hit = document.elementFromPoint(pos.x, pos.y);
+  const z = currentZoom();
+  const hit = document.elementFromPoint(pos.x / z, pos.y / z);
   return hit?.closest<HTMLElement>(".dock-pane") ?? null;
 };
 

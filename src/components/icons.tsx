@@ -312,23 +312,33 @@ export const IcSpinner = (props: IconProps) => (
 );
 export const IcDot = (props: IconProps) => (
   <Svg {...props}>
-    <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="4" fill="currentColor" stroke="none" />
   </Svg>
 );
 
 /**
  * Tab activity indicator (terminal tab strip + titlebar workspace tabs):
  * spinner while busy, pulsing dot when waiting on the user, otherwise the
- * caller's idle glyph.
+ * caller's idle glyph. Project-bound tabs pass `color` (their project's
+ * color) to tint the spinner and dot — the class defaults (`--accent`,
+ * `--warning`) are project-independent, and `--accent` in particular is the
+ * ACTIVE project's color, wrong on every other project's tab. The pulse/spin
+ * animations live on the classes and animate opacity/transform, so the
+ * inline color doesn't disturb them.
  */
 export function ActivityGlyph({
   activity,
   idle,
+  color,
 }: {
   activity: "idle" | "busy" | "attention";
   idle: ReactNode;
+  color?: string;
 }) {
-  if (activity === "attention") return <IcDot className="activity-attention" />;
-  if (activity === "busy") return <IcSpinner className="activity-busy" />;
+  const style = color ? { color } : undefined;
+  if (activity === "attention")
+    return <IcDot className="activity-attention" style={style} />;
+  if (activity === "busy")
+    return <IcSpinner className="activity-busy" style={style} />;
   return <>{idle}</>;
 }

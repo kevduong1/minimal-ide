@@ -18,6 +18,8 @@ export function getOrCreateAgentSession(t: AgentTerminal): TermSession {
     agent: true,
     onActivity: (activity) =>
       useAgentTerminalsStore.getState().setPaneActivity(t.id, activity),
+    onTitle: (title) =>
+      useAgentTerminalsStore.getState().setPaneTitle(t.id, title),
     onExit: (_code, early) => {
       // Normal exit closes the tab (like the workspace docks); an early
       // failure keeps the corpse readable and the user closes it manually.

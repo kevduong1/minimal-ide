@@ -23,6 +23,7 @@ import {
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useRepo, useWorkspace } from "../stores/workspaces";
 import { gitCommitFiles, type CommitFile, type RefLabel } from "../lib/ipc";
+import { copyText } from "../lib/clipboard";
 import { statusColor } from "../lib/status";
 import { computeGraph, type GraphRow } from "../lib/graphLayout";
 import { ContextMenu } from "./ContextMenu";
@@ -57,22 +58,6 @@ const PILL_ICON: Record<RefLabel["kind"], ReactNode> = {
   remote: <IcRemote />,
   tag: <IcTag />,
 };
-
-/** Clipboard write; falls back to execCommand (no clipboard plugin needed). */
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Create-branch popover (fixed-position overlay; menu = shared ContextMenu)

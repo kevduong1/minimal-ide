@@ -44,13 +44,14 @@ export const aggregateActivity = (
   return busy ? "busy" : "idle";
 };
 
-/** Drop activity entries for removed panes (no-op when none are present). */
-export const pruneActivity = (
-  paneActivity: Record<string, PaneActivity>,
+/** Drop pane-keyed entries (activity, live titles) for removed panes
+ *  (no-op when none are present, so subscribers see no change). */
+export const prunePaneState = <V>(
+  record: Record<string, V>,
   paneIds: string[],
-): Record<string, PaneActivity> => {
-  if (!paneIds.some((id) => id in paneActivity)) return paneActivity;
-  const next = { ...paneActivity };
+): Record<string, V> => {
+  if (!paneIds.some((id) => id in record)) return record;
+  const next = { ...record };
   for (const id of paneIds) delete next[id];
   return next;
 };

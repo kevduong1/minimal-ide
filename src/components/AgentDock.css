@@ -1,5 +1,5 @@
-/* Agent-dock flavor styling: project badge + active-project highlight.
-   (Generic dock chrome lives in Dock.css.) */
+/* Agent-dock flavor styling: session-summary badge + active-project
+   highlight. (Generic dock chrome lives in Dock.css.) */
 
 /* Solid accent ring = this terminal's project is the active workspace;
    thicker when it's also the dock-focused pane. Rings live on the ::after
@@ -18,7 +18,7 @@
   flex-shrink: 0;
 }
 
-/* --- project badge ------------------------------------------------------ */
+/* --- session-summary badge (live OSC title; absent until one is set) ---- */
 
 .agent-badge {
   position: absolute;
@@ -32,7 +32,8 @@
   padding: 0 9px;
   border-radius: 10px;
   background: var(--bg-overlay);
-  border: 1px solid var(--border);
+  /* soft project-colored outline (identity; --project-color set inline) */
+  border: 1px solid color-mix(in srgb, var(--project-color) 45%, transparent);
   color: var(--fg-dim);
   font-size: var(--font-size-sm);
   max-width: 240px;
@@ -47,29 +48,6 @@
   height: 11px;
   flex-shrink: 0;
 }
-/* project-color identity dot (background set inline from the palette) */
-.agent-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 .agent-badge-disconnected {
   color: var(--warning);
-}
-
-.agent-badge-input {
-  position: absolute;
-  top: 6px;
-  right: 14px;
-  z-index: 7;
-  width: 150px;
-  height: 20px;
-  padding: 0 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--focus-ring);
-  border-radius: 10px;
-  color: var(--fg);
-  font-size: var(--font-size-sm);
-  outline: none;
 }

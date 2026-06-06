@@ -75,6 +75,11 @@ export interface TermSessionOptions {
   agent: boolean;
   /** State changes from the activity tracker (agent sessions only). */
   onActivity?: (activity: PaneActivity) => void;
+  /** OSC 0/2 window-title changes (agent sessions only). Claude Code
+   *  auto-generates topic summaries and emits them as OSC 0 titles for
+   *  recognized terminals — the TERM_PROGRAM masquerade satisfies its
+   *  allowlist. An empty title (Claude Code's exit reset) clears it. */
+  onTitle?: (title: string) => void;
   /** PTY exit. `early` = non-zero exit within EARLY_EXIT_MS of spawn (the
    *  corpse is kept readable; the caller should NOT remove the terminal). */
   onExit?: (code: number | null, early: boolean) => void;
@@ -188,16 +193,23 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
     lastDockFitDims = { cols, rows };
     void ptyResize(id, cols, rows).catch(() => {});
   });
+  const titleSub = opts.onTitle
+    ? term.onTitleChange((title) => opts.onTitle!(title.trim()))
+    : null;
 
-  // Busy/attention tracking. watched() is the DOM visibility oracle: the
-  // wrapper has no offsetParent exactly when the panel is hidden, another
-  // group tab is in front, or the session is detached mid-drag — no store
+  // Busy/attention tracking. watched() is the focus oracle: attention exists
+  // to pull the user BACK to a pane, so "watching" means focused IN it
+  // (keystrokes land there) — a pane merely visible in a split while the
+  // user types elsewhere still deserves its ping when the work ends.
+  // contains(activeElement) also implies attached and visible (a hidden or
+  // removed node can't hold focus), and clicking into the pane focuses it,
+  // which acknowledges the ping (AgentPane onMouseDown). No store
   // subscriptions needed, and it can't go stale.
   let tracker: ActivityTracker | null =
     agent && opts.onActivity
       ? trackActivity(
           term,
-          () => document.hasFocus() && el.offsetParent !== null,
+          () => document.hasFocus() && el.contains(document.activeElement),
           opts.onActivity,
         )
       : null;
@@ -367,6 +379,7 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
       unExit?.();
       dataSub.dispose();
       resizeSub.dispose();
+      titleSub?.dispose();
       if (tracker) {
         tracker.dispose();
         tracker = null;

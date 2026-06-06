@@ -5,10 +5,13 @@
  * Code stopping to ask a question).
  *
  * Detection is heuristic because stock zsh emits no shell-integration marks:
- *  - busy: sustained output that isn't keystroke echo. Silent commands
- *    (`sleep 5`) are intentionally missed — better than a spinner that can
- *    get stuck on. Alternate-screen TUIs (vim, htop) repaint constantly
- *    without "working" in any meaningful sense, so they never count.
+ *  - busy: sustained output that isn't keystroke echo, debounced at onset
+ *    (BUSY_CONFIRM_MS): output must keep flowing briefly before the spinner
+ *    shows, so a lone redraw burst (the SIGWINCH repaint when a pane is
+ *    dragged or refit) never blips it. Silent commands (`sleep 5`) are
+ *    intentionally missed — better than a spinner that can get stuck on.
+ *    Alternate-screen TUIs (vim, htop) repaint constantly without "working"
+ *    in any meaningful sense, so they never count.
  *  - attention: BEL / OSC 9 / OSC 777 notifications (pty.rs masquerades as a
  *    notification-capable TERM_PROGRAM so agent CLIs actually send these),
  *    plus a busy stretch ≥ ATTENTION_MIN_BUSY_MS ending while the pane was
@@ -36,6 +39,12 @@ import type { PaneActivity } from "../stores/terminal";
 
 /** Output this soon after a keystroke is treated as echo, not work. */
 const ECHO_MS = 250;
+/**
+ * A new heuristic stretch must keep producing output this long before the
+ * busy indicator shows — a lone redraw burst (e.g. the SIGWINCH repaint when
+ * a pane is dragged or refit) goes quiet first and never surfaces.
+ */
+const BUSY_CONFIRM_MS = 250;
 /** The busy indicator drops after this long without output. */
 const QUIET_MS = 600;
 /** Quiet must survive this long before it counts as "the work ended". */
@@ -59,7 +68,9 @@ export interface ActivityTracker {
 
 export function trackActivity(
   term: Terminal,
-  /** Whether the user is currently looking at this pane. */
+  /** Whether the user is watching this pane (the caller's oracle —
+   *  termSession supplies "focused in it", so visible-but-unfocused split
+   *  panes still earn their pings). */
   watched: () => boolean,
   /** Fired only when the pane's activity actually changes. */
   onChange: (activity: PaneActivity) => void,
@@ -68,6 +79,8 @@ export function trackActivity(
   let attention = false;
   /** Start of the current busy stretch; survives sub-grace output stalls. */
   let busySince = 0;
+  /** First output of a not-yet-confirmed heuristic stretch (0 = none). */
+  let pendingSince = 0;
   let lastOutputAt = 0;
   let lastInputAt = 0;
   let lastMarkAt = 0;
@@ -114,6 +127,7 @@ export function trackActivity(
    */
   const endBusy = () => {
     stopQuietTimer();
+    pendingSince = 0; // an unconfirmed candidate went quiet — never was work
     if (!busy) return;
     update(false, attention);
     const stretch = lastOutputAt - busySince;
@@ -137,6 +151,7 @@ export function trackActivity(
    */
   const endBusyQuietly = () => {
     stopQuietTimer();
+    pendingSince = 0;
     if (!busy) return;
     quietEnded = true;
     update(false, attention);
@@ -147,9 +162,23 @@ export function trackActivity(
     quietEnded = false; // heuristic stretch supersedes any failsafe-ended one
     armQuietTimer(QUIET_MS);
     if (busy) return;
-    if (pingTimer !== null) stopPingTimer(); // resumed within grace
-    else busySince = lastOutputAt; // genuinely new stretch
-    update(true, attention);
+    if (pingTimer !== null) {
+      // Resumed within grace: the same, already-proven stretch (original
+      // busySince) — no re-confirmation.
+      stopPingTimer();
+      update(true, attention);
+      return;
+    }
+    // Debounced onset: a genuinely new stretch is only a candidate until
+    // output has kept flowing for BUSY_CONFIRM_MS — a lone redraw burst
+    // (pane drag → SIGWINCH repaint) ends quietly via endBusy instead.
+    if (pendingSince === 0) {
+      pendingSince = lastOutputAt;
+    } else if (lastOutputAt - pendingSince >= BUSY_CONFIRM_MS) {
+      busySince = pendingSince; // the stretch started at its first output
+      pendingSince = 0;
+      update(true, attention);
+    }
   };
 
   const notify = () => {
@@ -225,6 +254,7 @@ export function trackActivity(
         integrated = true;
         lastMarkAt = Date.now();
         stopQuietTimer();
+        pendingSince = 0; // marks own busy/idle — drop any heuristic candidate
         if (kind === "C") {
           if (!busy) busySince = lastMarkAt;
           quietEnded = false;

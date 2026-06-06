@@ -97,7 +97,21 @@
   flex-shrink: 0;
 }
 
-/* ----- project color picker (tab context menu) --------------------------- */
+/* inline rename (double-click / context menu); sized to a typical name so
+   entering edit mode doesn't make the tab jump */
+.ws-tab-rename {
+  width: 110px;
+  height: 19px;
+  padding: 0 5px;
+  background: var(--bg-input);
+  border: 1px solid var(--focus-ring);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+}
+
+/* ----- tab context menu (rename / copy path / color picker) -------------- */
 
 .ws-color-label {
   padding: 3px 8px 4px;

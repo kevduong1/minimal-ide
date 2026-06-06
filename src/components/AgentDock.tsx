@@ -1,13 +1,14 @@
 /**
  * The Agent Terminals flavor of the generic Dock: panes attach registry
  * sessions spawned in their bound project's directory (TERM_PROGRAM
- * masquerade + activity tracking), wear a project badge (double-click to
- * rename — the badge and the tab share one title), highlight when their
+ * masquerade + activity tracking), wear a session-summary badge (the live
+ * OSC 0/2 title — Claude Code's auto-generated topic — hidden until one is
+ * set; tabs rename via the Dock's double-click), highlight when their
  * project is the active workspace, and clicking them switches the app to
  * that project (reopening it if it was closed → "disconnected" ⊘ until
  * then).
  */
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, type CSSProperties } from "react";
 import {
   agentTitleBase,
   useAgentTerminalsStore,
@@ -30,7 +31,7 @@ const useConnected = (workspacePath: string): boolean =>
   useWorkspacesStore((s) => s.workspaces.some((w) => w.path === workspacePath));
 
 // ---------------------------------------------------------------------------
-// Badge overlay (project name / custom title; double-click to rename)
+// Badge overlay (live session summary — hidden until the agent sets a title)
 // ---------------------------------------------------------------------------
 
 function AgentBadge({
@@ -40,61 +41,23 @@ function AgentBadge({
   terminal: AgentTerminal;
   connected: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const cancelled = useRef(false);
   const projectColor = useProjectColorVar(terminal.workspacePath);
-
-  const commit = (value: string) => {
-    // An emptied title reverts to the default (the project's basename).
-    useAgentTerminalsStore
-      .getState()
-      .renameTerminal(
-        terminal.id,
-        value.trim() || agentTitleBase(terminal.workspacePath),
-      );
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <input
-        className="agent-badge-input"
-        defaultValue={terminal.title}
-        autoFocus
-        onFocus={(e) => e.currentTarget.select()}
-        // Keep edits out of the terminal: no pane focus/switch on click, no
-        // keystrokes reaching xterm or the global shortcut handler.
-        onMouseDown={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === "Enter") commit(e.currentTarget.value);
-          else if (e.key === "Escape") {
-            cancelled.current = true;
-            setEditing(false);
-          }
-        }}
-        onBlur={(e) => {
-          if (!cancelled.current) commit(e.currentTarget.value);
-        }}
-      />
-    );
-  }
+  // The session's live OSC 0/2 title — Claude Code's auto-generated topic
+  // summary. No title yet (fresh shell, agent not running) = no badge; the
+  // tab keeps the stable project name. Clicks fall through to the pane
+  // (focus + switch-to-project), so the badge is display-only.
+  const summary = useAgentTerminalsStore((s) => s.paneTitle[terminal.id]);
+  if (!summary) return null;
 
   return (
     <div
       className="agent-badge"
-      title={`${terminal.workspacePath}${connected ? "" : " — project not open"}`}
-      onMouseDown={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-      onDoubleClick={() => {
-        cancelled.current = false;
-        setEditing(true);
-      }}
+      // Project identity: a soft project-tinted outline (softened in CSS).
+      style={{ "--project-color": projectColor } as CSSProperties}
+      title={`${summary}\n${terminal.workspacePath}${connected ? "" : " — project not open"}`}
     >
-      <span className="agent-badge-dot" style={{ background: projectColor }} />
       {!connected && <IcDisconnected className="agent-badge-disconnected" />}
-      <span className="truncate">{terminal.title}</span>
+      <span className="truncate">{summary}</span>
     </div>
   );
 }
@@ -154,12 +117,13 @@ function AgentTabIcon({ terminal }: { terminal: AgentTerminal }) {
     aggregateActivity(s.paneActivity, [terminal.id]),
   );
   const projectColor = useProjectColorVar(terminal.workspacePath);
-  // Idle sparkle tinted in the project's color (matches the titlebar tab and
-  // badge dot); busy/attention glyphs keep their semantic colors.
+  // All three glyph states tinted in the project's color (matches the
+  // titlebar tab and badge dot).
   return (
     <ActivityGlyph
       activity={activity}
       idle={<IcSparkle style={{ color: projectColor }} />}
+      color={projectColor}
     />
   );
 }

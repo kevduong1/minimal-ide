@@ -13,6 +13,7 @@ import { useUiStore } from "./stores/ui";
 import { closeTabSafely } from "./stores/editor";
 import { useProjectColorVar } from "./lib/projectColors";
 import { listenTermFileDrops } from "./lib/termFileDrop";
+import { initZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import { loadTasks, sortForPicker, type TaskDef } from "./lib/tasks";
 import { runTask } from "./lib/taskRunner";
 import TaskPicker from "./components/TaskPicker";
@@ -173,6 +174,9 @@ export default function App() {
   // (image attachments for agent CLIs, plain paths for shells).
   useEffect(() => listenTermFileDrops(), []);
 
+  // Restore the persisted zoom level (the webview always opens at 1).
+  useEffect(() => initZoom(), []);
+
   const togglePanel = useUiStore((s) => s.togglePanel);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
@@ -254,6 +258,16 @@ export default function App() {
           e.preventDefault();
           setActive(ws.path);
         }
+      } else if (e.key === "=" || e.key === "+") {
+        // ⌘+ zoom in ("=" is the physical ⌘+ key; "+" covers ⌘⇧= and numpad)
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        zoomReset();
       }
     };
     window.addEventListener("keydown", onKey);
