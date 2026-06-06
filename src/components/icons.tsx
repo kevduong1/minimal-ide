@@ -1,0 +1,208 @@
+/**
+ * Shared icon set — every static UI glyph, defined exactly once.
+ *
+ * `Svg` provides the common 16x16 stroked frame; icon components forward all
+ * SVG props, so callers can pass className / style / width etc. Sizing is
+ * intentionally NOT hardcoded here — it comes from CSS at the call sites.
+ */
+import type { SVGProps } from "react";
+
+export type IconProps = SVGProps<SVGSVGElement>;
+
+export function Svg(props: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* Git                                                                        */
+/* ------------------------------------------------------------------------- */
+
+export const IcBranch = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="4.5" cy="3.5" r="1.7" />
+    <circle cx="4.5" cy="12.5" r="1.7" />
+    <circle cx="11.5" cy="5.5" r="1.7" />
+    <path d="M4.5 5.2v5.6" />
+    <path d="M11.5 7.2c0 2.3-2.8 2.4-4.6 3.2" />
+  </Svg>
+);
+export const IcRemote = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4.6 12.5h7a2.6 2.6 0 0 0 .4-5.17 4 4 0 0 0-7.83-.55A2.9 2.9 0 0 0 4.6 12.5z" />
+  </Svg>
+);
+export const IcTag = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8.7 2.5h4.8v4.8l-6.4 6.4a1 1 0 0 1-1.4 0L2.3 10.3a1 1 0 0 1 0-1.4z" />
+    <circle cx="10.8" cy="5.2" r="1" />
+  </Svg>
+);
+export const IcRefresh = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M13.2 5.3A5.5 5.5 0 1 0 13.5 8" />
+    <path d="M13.5 2v3.3h-3.3" />
+  </Svg>
+);
+export const IcSync = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M13.5 6.5a5.5 5.5 0 0 0-10-2" />
+    <path d="M3.5 1.5v3h3" />
+    <path d="M2.5 9.5a5.5 5.5 0 0 0 10 2" />
+    <path d="M12.5 14.5v-3h-3" />
+  </Svg>
+);
+export const IcPull = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 2.5v10" />
+    <path d="M3.5 8.5 8 13l4.5-4.5" />
+  </Svg>
+);
+export const IcPush = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 13.5v-10" />
+    <path d="M3.5 7.5 8 3l4.5 4.5" />
+  </Svg>
+);
+export const IcCheck = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.5 8.5 6 12l7.5-7.5" />
+  </Svg>
+);
+export const IcDiscard = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M3 7.5h6.5a3.25 3.25 0 0 1 0 6.5H6" />
+    <path d="M5.5 5 3 7.5 5.5 10" />
+  </Svg>
+);
+export const IcBox = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="13" height="3" rx="0.5" />
+    <path d="M2.5 5.5v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-7" />
+    <path d="M6.5 8.5h3" />
+  </Svg>
+);
+export const IcApply = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 2v7" />
+    <path d="M5 6.5 8 9.5l3-3" />
+    <path d="M2.5 11v2.5h11V11" />
+  </Svg>
+);
+export const IcPop = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 9.5v-7" />
+    <path d="M5 5 8 2l3 3" />
+    <path d="M2.5 11v2.5h11V11" />
+  </Svg>
+);
+export const IcDiff = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="5.2" height="11" rx="1" />
+    <rect x="9.3" y="2.5" width="5.2" height="11" rx="1" />
+  </Svg>
+);
+
+/* ------------------------------------------------------------------------- */
+/* Files & folders                                                            */
+/* ------------------------------------------------------------------------- */
+
+export const IcFile = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M9.5 1.5h-5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V4.5z" />
+    <path d="M9.5 1.5v3h3" />
+  </Svg>
+);
+export const IcFolder = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M1.5 4a1 1 0 0 1 1-1h3.2l1.6 1.8h6.2a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4z" />
+  </Svg>
+);
+export const IcFolderOpen = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8.5 13H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3.2l1.6 1.8h6.2a1 1 0 0 1 1 1V8" />
+    <path d="M11 13.5h4M13 11.5l2 2-2 2" />
+  </Svg>
+);
+export const IcCollapseAll = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="5.5" y="5.5" width="9" height="9" rx="1" />
+    <path d="M7.5 10h5" />
+    <path d="M2.5 10.5v-7a1 1 0 0 1 1-1h7" />
+  </Svg>
+);
+
+/* ------------------------------------------------------------------------- */
+/* Chrome & generic actions                                                   */
+/* ------------------------------------------------------------------------- */
+
+export const IcClose = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" />
+  </Svg>
+);
+export const IcChevronRight = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m6 3.5 4.5 4.5L6 12.5" />
+  </Svg>
+);
+export const IcChevronDown = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m3.5 6 4.5 4.5L12.5 6" />
+  </Svg>
+);
+export const IcPlus = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M8 3v10M3 8h10" />
+  </Svg>
+);
+export const IcMinus = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M3 8h10" />
+  </Svg>
+);
+export const IcTrash = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M2.5 4.5h11" />
+    <path d="M5.5 4.5v-1a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1" />
+    <path d="M3.5 4.5l.7 8.6a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9l.7-8.6" />
+    <path d="M6.5 7v4M9.5 7v4" />
+  </Svg>
+);
+export const IcTerminal = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M4 6l2.5 2L4 10" />
+    <path d="M8 10.5h4" />
+  </Svg>
+);
+/** Panel split into two columns at the midline (split-editor / split-terminal). */
+export const IcSplit = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M8 2.5v11" />
+  </Svg>
+);
+/** Panel with a left sidebar (divider off-center) — NOT the same as IcSplit. */
+export const IcSidebar = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M6 2.5v11" />
+  </Svg>
+);
+/** Panel split into two rows (unified diff view). */
+export const IcRows = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M1.5 8h13" />
+  </Svg>
+);

@@ -1,0 +1,351 @@
+/**
+ * Single-file CodeMirror editor for a "file" tab, plus the shared CodeMirror
+ * helpers (theme, language loader, read-only / editing extensions, banner
+ * dismiss button) that DiffViewer reuses.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { basicSetup, EditorView } from "codemirror";
+import { EditorState, Text, type Extension } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
+import { LanguageDescription } from "@codemirror/language";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { languages } from "@codemirror/language-data";
+import { fsReadFile, fsWriteFile, onRepoChanged } from "../lib/ipc";
+import { useEditorStore, type Tab } from "../stores/editor";
+import { IcClose } from "./icons";
+import "./EditorArea.css";
+
+type FileTab = Extract<Tab, { kind: "file" }>;
+
+export type CmExtension = Extension;
+
+/** Debounce for re-reading the file after a repo watcher event. */
+const DISK_CHECK_DEBOUNCE_MS = 300;
+
+// ---------------------------------------------------------------------------
+// Shared theme
+// ---------------------------------------------------------------------------
+
+/** oneDark blended into the app's editor background + UI mono font. */
+export const editorTheme: CmExtension = [
+  oneDark,
+  EditorView.theme(
+    {
+      "&": { backgroundColor: "var(--bg-editor)", fontSize: "12.5px" },
+      ".cm-scroller": {
+        fontFamily: '"SF Mono", ui-monospace, Menlo, monospace',
+      },
+      ".cm-gutters": { backgroundColor: "var(--bg-editor)" },
+    },
+    { dark: true },
+  ),
+];
+
+// ---------------------------------------------------------------------------
+// Shared language loader
+// ---------------------------------------------------------------------------
+
+/** Resolve + lazily load the language support for a file path, or null. */
+export async function languageFor(path: string): Promise<CmExtension | null> {
+  const filename = path.split("/").pop() ?? path;
+  const desc = LanguageDescription.matchFilename(languages, filename);
+  if (!desc) return null;
+  try {
+    return await desc.load();
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared editing extensions
+// ---------------------------------------------------------------------------
+
+/** Full read-only: not editable and readOnly facet set. */
+export const readOnlyExtension: CmExtension = [
+  EditorView.editable.of(false),
+  EditorState.readOnly.of(true),
+];
+
+/** Tab indents instead of moving focus; Mod-s runs `onSave`. */
+export function editKeymap(onSave: (view: EditorView) => void): CmExtension {
+  return keymap.of([
+    indentWithTab,
+    {
+      key: "Mod-s",
+      preventDefault: true,
+      run: (v) => {
+        onSave(v);
+        return true;
+      },
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Shared banner dismiss button
+// ---------------------------------------------------------------------------
+
+export function BannerDismiss({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="icon-btn banner-dismiss" title="Dismiss" onClick={onClick}>
+      <IcClose />
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Draft cache: unsaved text survives tab switches (views unmount per tab)
+// ---------------------------------------------------------------------------
+
+const draftCache = new Map<string, { text: string | Text; savedText: string | Text }>();
+
+// Drop drafts whose tab was closed.
+useEditorStore.subscribe((s) => {
+  for (const id of [...draftCache.keys()]) {
+    if (!s.tabs.some((t) => t.id === id)) draftCache.delete(id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Editor component
+// ---------------------------------------------------------------------------
+
+export default function Editor({ tab }: { tab: FileTab }) {
+  const markDirty = useEditorStore((s) => s.markDirty);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  /** Last loaded/saved content as a CodeMirror Text (no toString per keystroke). */
+  const savedRef = useRef<Text>(Text.empty);
+  const [loading, setLoading] = useState(true);
+  const [binary, setBinary] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  /** Disk changed under a dirty buffer; saving would overwrite it. */
+  const [diskChanged, setDiskChanged] = useState(false);
+  /** Mod-s found the file changed on disk; waiting for explicit Overwrite. */
+  const [saveConflict, setSaveConflict] = useState(false);
+
+  /** Write the buffer out; unless `force`, refuse when the disk changed. */
+  const save = useCallback(
+    async (view: EditorView, force: boolean) => {
+      const doc = view.state.doc;
+      try {
+        if (!force) {
+          let onDisk: string | null = null;
+          try {
+            const file = await fsReadFile(tab.path);
+            if (!file.binary) onDisk = file.text;
+          } catch {
+            // unreadable / deleted on disk — writing recreates it
+          }
+          if (viewRef.current !== view) return;
+          if (onDisk !== null && onDisk !== savedRef.current.toString()) {
+            setSaveConflict(true);
+            return;
+          }
+        }
+        await fsWriteFile(tab.path, doc.toString());
+        if (viewRef.current !== view) return;
+        savedRef.current = doc;
+        const now = view.state.doc;
+        const dirty = !now.eq(doc);
+        if (dirty) draftCache.set(tab.id, { text: now, savedText: doc });
+        else draftCache.delete(tab.id);
+        markDirty(tab.id, dirty);
+        setSaveError(null);
+        setSaveConflict(false);
+        setDiskChanged(false);
+      } catch (e) {
+        if (viewRef.current === view) setSaveError(String(e));
+      }
+    },
+    [tab.id, tab.path, markDirty],
+  );
+
+  /** Replace the buffer with the on-disk content and mark it clean. */
+  const reloadFromDisk = useCallback(async () => {
+    try {
+      const file = await fsReadFile(tab.path);
+      const view = viewRef.current;
+      if (!view || file.binary) return;
+      // Update `saved` first so the updateListener sees a clean buffer.
+      const fresh = view.state.toText(file.text);
+      savedRef.current = fresh;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: fresh },
+      });
+      draftCache.delete(tab.id);
+      markDirty(tab.id, false);
+      setDiskChanged(false);
+      setSaveConflict(false);
+    } catch {
+      // mid-write / deleted — keep the banner so the user can retry
+    }
+  }, [tab.id, tab.path, markDirty]);
+
+  useEffect(() => {
+    let disposed = false;
+    let view: EditorView | null = null;
+    let unlistenRepo: (() => void) | null = null;
+    let diskTimer: ReturnType<typeof setTimeout> | null = null;
+    setLoading(true);
+    setBinary(false);
+    setTruncated(false);
+    setLoadError(null);
+    setSaveError(null);
+    setDiskChanged(false);
+    setSaveConflict(false);
+
+    // After a watcher event: silently reload when the buffer is clean,
+    // warn when it is dirty (rare path — toString is fine here).
+    const checkDisk = async () => {
+      try {
+        const file = await fsReadFile(tab.path);
+        const v = viewRef.current;
+        if (disposed || !v || file.binary) return;
+        if (file.text === savedRef.current.toString()) return; // our own write
+        if (v.state.doc.eq(savedRef.current)) {
+          const fresh = v.state.toText(file.text);
+          savedRef.current = fresh;
+          v.dispatch({
+            changes: { from: 0, to: v.state.doc.length, insert: fresh },
+          });
+          setDiskChanged(false);
+        } else {
+          setDiskChanged(true);
+        }
+      } catch {
+        // mid-write / deleted — the next event (or a save) will sort it out
+      }
+    };
+
+    (async () => {
+      let doc: string | Text;
+      let savedDoc: string | Text;
+      let isTruncated = false;
+
+      const cached = draftCache.get(tab.id);
+      if (cached) {
+        doc = cached.text;
+        savedDoc = cached.savedText;
+      } else {
+        const file = await fsReadFile(tab.path);
+        if (disposed) return;
+        if (file.binary) {
+          setBinary(true);
+          setLoading(false);
+          return;
+        }
+        doc = file.text;
+        savedDoc = file.text;
+        isTruncated = file.truncated;
+      }
+
+      const lang = await languageFor(tab.path);
+      if (disposed) return;
+      setTruncated(isTruncated);
+
+      const extensions: CmExtension[] = [
+        basicSetup,
+        editorTheme,
+        lang ?? [],
+        EditorView.updateListener.of((u) => {
+          if (!u.docChanged) return;
+          const dirty = !u.state.doc.eq(savedRef.current);
+          if (dirty)
+            draftCache.set(tab.id, { text: u.state.doc, savedText: savedRef.current });
+          else draftCache.delete(tab.id);
+          markDirty(tab.id, dirty);
+        }),
+        isTruncated
+          ? readOnlyExtension
+          : editKeymap((v) => void save(v, false)),
+      ];
+
+      view = new EditorView({ doc, extensions, parent: hostRef.current! });
+      viewRef.current = view;
+      savedRef.current =
+        typeof savedDoc === "string" ? view.state.toText(savedDoc) : savedDoc;
+      setLoading(false);
+
+      // Watch for external modifications (debounced — events arrive in bursts).
+      const unlisten = await onRepoChanged(() => {
+        if (disposed) return;
+        if (diskTimer) clearTimeout(diskTimer);
+        diskTimer = setTimeout(() => void checkDisk(), DISK_CHECK_DEBOUNCE_MS);
+      });
+      if (disposed) unlisten();
+      else unlistenRepo = unlisten;
+    })().catch((e) => {
+      if (!disposed) {
+        setLoadError(String(e));
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      if (diskTimer) clearTimeout(diskTimer);
+      unlistenRepo?.();
+      viewRef.current = null;
+      view?.destroy();
+    };
+  }, [tab.id, tab.path, markDirty, save]);
+
+  return (
+    <div className="editor-pane">
+      {truncated && (
+        <div className="editor-banner warning">
+          File truncated (&gt;5 MB) — read-only
+        </div>
+      )}
+      {diskChanged && !saveConflict && (
+        <div className="editor-banner warning">
+          <span className="truncate">
+            File changed on disk — saving will overwrite it
+          </span>
+          <button className="banner-action" onClick={() => void reloadFromDisk()}>
+            Reload
+          </button>
+          <BannerDismiss onClick={() => setDiskChanged(false)} />
+        </div>
+      )}
+      {saveConflict && (
+        <div className="editor-banner danger">
+          <span className="truncate">
+            File changed on disk since it was loaded — overwrite it?
+          </span>
+          <button
+            className="banner-action"
+            onClick={() => {
+              const v = viewRef.current;
+              if (v) void save(v, true);
+            }}
+          >
+            Overwrite
+          </button>
+          <BannerDismiss onClick={() => setSaveConflict(false)} />
+        </div>
+      )}
+      {saveError && (
+        <div className="editor-banner danger">
+          <span className="truncate">Save failed: {saveError}</span>
+          <BannerDismiss onClick={() => setSaveError(null)} />
+        </div>
+      )}
+      {binary ? (
+        <div className="editor-msg">Binary file not shown</div>
+      ) : loadError ? (
+        <div className="editor-msg danger">{loadError}</div>
+      ) : (
+        <div ref={hostRef} className="editor-host" />
+      )}
+      {loading && !binary && !loadError && (
+        <div className="editor-loading">Loading…</div>
+      )}
+    </div>
+  );
+}

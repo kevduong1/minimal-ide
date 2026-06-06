@@ -1,0 +1,188 @@
+/* GitGraph — commit graph list (rail lanes, ref pills, summary, meta) */
+
+.git-graph {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.gg-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.gg-spacer {
+  position: relative;
+  width: 100%;
+}
+
+/* ---- commit row (24px) ---- */
+
+.gg-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.gg-row:hover {
+  background: var(--bg-hover);
+}
+.gg-row.expanded {
+  background: var(--bg-active);
+}
+
+.gg-rail {
+  flex-shrink: 0;
+  display: block;
+}
+
+.gg-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--fg);
+}
+
+.gg-author {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 90px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-faint);
+}
+
+.gg-time {
+  flex-shrink: 0;
+  min-width: 26px;
+  text-align: right;
+  font-size: var(--font-size-sm);
+  color: var(--fg-faint);
+}
+
+/* ---- ref pills ---- */
+
+.gg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 14px;
+  flex-shrink: 0;
+  color: var(--fg);
+}
+.gg-pill svg {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+}
+.gg-pill .truncate {
+  max-width: 110px;
+}
+
+.gg-pill.local {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.gg-pill.head {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--fg-inverse);
+}
+.gg-pill.remote {
+  border: 1px solid color-mix(in srgb, var(--graph-1) 55%, transparent);
+  background: color-mix(in srgb, var(--graph-1) 14%, transparent);
+}
+.gg-pill.tag {
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+.gg-pill.more {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--fg-dim);
+}
+
+/* ---- file rows under the expanded commit (22px, indented) ---- */
+
+.gg-file {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 28px; /* 24px indent past the row's 4px base padding */
+  overflow: hidden;
+  cursor: pointer;
+}
+.gg-file:hover {
+  background: var(--bg-hover);
+}
+.gg-file.loading {
+  color: var(--fg-faint);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  cursor: default;
+}
+.gg-file.loading:hover {
+  background: none;
+}
+
+.gg-file-status {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.gg-file-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+.gg-file:hover .gg-file-path {
+  color: var(--fg);
+}
+
+/* ---- tail / empty ---- */
+
+.gg-loadmore {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+.gg-loadmore:hover {
+  text-decoration: underline;
+}
+
+.gg-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-faint);
+  font-size: var(--font-size);
+}

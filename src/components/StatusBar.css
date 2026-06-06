@@ -1,0 +1,104 @@
+.statusbar {
+  height: var(--statusbar-height);
+  flex-shrink: 0;
+  background: var(--bg-statusbar);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 14px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+  min-width: 0;
+}
+
+.statusbar-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+  flex-shrink: 0;
+  min-width: 0;
+}
+.statusbar-item svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.statusbar-clickable {
+  padding: 0 5px;
+  border-radius: 4px;
+}
+.statusbar-clickable:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.statusbar-branch-name {
+  max-width: 180px;
+}
+
+.statusbar-error {
+  color: var(--danger);
+  max-width: 45vw;
+}
+.statusbar-error:hover {
+  color: var(--danger);
+}
+.statusbar-error .truncate {
+  min-width: 0;
+}
+
+@keyframes statusbar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.statusbar-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-faint);
+  border-top-color: var(--fg);
+  animation: statusbar-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.statusbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.statusbar-path {
+  max-width: 260px;
+  color: var(--fg-faint);
+}
+
+.statusbar-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.statusbar-toggle {
+  width: 20px;
+  height: 20px;
+}
+.statusbar-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+.statusbar-toggle.active {
+  color: var(--fg);
+}

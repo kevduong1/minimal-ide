@@ -1,0 +1,354 @@
+/* ===========================================================================
+ * Editor area: tab bar, empty state, file editor pane, diff viewer pane.
+ * ======================================================================== */
+
+.editor-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-editor);
+}
+
+/* ----- tab bar ----------------------------------------------------------- */
+
+.editor-tabs {
+  display: flex;
+  height: 34px;
+  flex-shrink: 0;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.editor-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 110px;
+  max-width: 200px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  border-right: 1px solid var(--border-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.editor-tab:hover {
+  background: var(--bg-hover);
+}
+.editor-tab.active {
+  background: var(--bg-editor);
+  color: var(--fg);
+  box-shadow: inset 0 1px 0 0 var(--accent);
+}
+.editor-tab.active:hover {
+  background: var(--bg-editor);
+}
+
+.editor-tab .tab-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.editor-tab .tab-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.editor-tab .tab-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* dirty dot <-> close button swap */
+.editor-tab .tab-trailing {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.editor-tab .tab-dirty-dot {
+  display: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg);
+}
+.editor-tab.dirty .tab-dirty-dot {
+  display: block;
+}
+.editor-tab:hover .tab-dirty-dot {
+  display: none;
+}
+.editor-tab .tab-close {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+.editor-tab:hover .tab-close {
+  display: inline-flex;
+}
+.editor-tab .tab-close svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ----- content ------------------------------------------------------------ */
+
+.editor-content {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+/* center the Suspense fallback (.editor-content is not a flex container) */
+.editor-content > .editor-msg {
+  height: 100%;
+}
+
+/* ----- empty state --------------------------------------------------------- */
+
+.editor-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--fg-faint);
+}
+.editor-empty .empty-icon {
+  width: 40px;
+  height: 40px;
+  opacity: 0.35;
+}
+.editor-empty .empty-title {
+  font-size: var(--font-size);
+}
+.editor-empty .empty-hints {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 170px;
+}
+.editor-empty .hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.editor-empty .kbd {
+  background: var(--bg-active);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fg-dim);
+}
+
+/* ----- file editor pane ----------------------------------------------------- */
+
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+}
+
+.editor-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  z-index: 6;
+}
+.editor-banner.warning {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  color: var(--warning);
+}
+.editor-banner.danger {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+.editor-banner .banner-dismiss {
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  color: inherit;
+}
+.editor-banner .banner-dismiss svg {
+  width: 11px;
+  height: 11px;
+}
+/* inline action (Reload / Overwrite) — pushed right, before the dismiss X */
+.editor-banner .banner-action {
+  flex-shrink: 0;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 11px;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 4px;
+}
+.editor-banner .banner-action:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.editor-banner .banner-action ~ .banner-dismiss {
+  margin-left: 0;
+}
+
+.editor-host {
+  flex: 1;
+  min-height: 0;
+}
+.editor-host .cm-editor {
+  height: 100%;
+}
+
+.editor-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  font-size: var(--font-size);
+  color: var(--fg-dim);
+}
+.editor-msg.dim {
+  color: var(--fg-faint);
+}
+.editor-msg.danger {
+  color: var(--danger);
+}
+
+.editor-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-editor);
+  color: var(--fg-faint);
+  z-index: 5;
+}
+
+/* ----- diff viewer pane ------------------------------------------------------ */
+
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.diff-toolbar {
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.diff-toolbar .diff-name {
+  font-size: 12.5px;
+  color: var(--fg);
+  flex-shrink: 1;
+  min-width: 0;
+}
+.diff-toolbar .diff-labels {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  flex-shrink: 4;
+  min-width: 0;
+}
+.diff-toolbar .diff-spacer {
+  flex: 1;
+}
+
+.diff-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-host {
+  flex: 1;
+  min-height: 0;
+}
+/* MergeView needs an explicit height to scroll (see @codemirror/merge docs) */
+.diff-host .cm-mergeView {
+  height: 100%;
+}
+/* unified mode: the EditorView is a direct child of the host */
+.diff-host > .cm-editor {
+  height: 100%;
+}
+
+/* ----- CodeMirror common tweaks ---------------------------------------------- */
+
+/* body is user-select: none; editor text must stay selectable */
+.editor-host .cm-editor .cm-content,
+.diff-host .cm-editor .cm-content {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ----- @codemirror/merge chunk colors -> theme vars --------------------------- */
+
+/* changed lines */
+.diff-host .cm-editor.cm-merge-a .cm-changedLine,
+.diff-host .cm-editor .cm-deletedChunk {
+  background-color: var(--diff-del-bg);
+}
+.diff-host .cm-editor.cm-merge-b .cm-changedLine {
+  background-color: var(--diff-add-bg);
+}
+
+/* intra-line changed text (ins/del marks) */
+.diff-host .cm-editor.cm-merge-a .cm-changedText,
+.diff-host .cm-editor .cm-deletedChunk .cm-deletedText {
+  background: linear-gradient(var(--diff-del-gutter), var(--diff-del-gutter))
+    bottom / 100% 2px no-repeat;
+}
+.diff-host .cm-editor.cm-merge-b .cm-changedText {
+  background: linear-gradient(var(--diff-add-gutter), var(--diff-add-gutter))
+    bottom / 100% 2px no-repeat;
+}
+.diff-host .cm-editor.cm-merge-b .cm-deletedText {
+  background: var(--diff-del-bg);
+}
+
+/* change gutter markers */
+.diff-host .cm-editor.cm-merge-a .cm-changedLineGutter,
+.diff-host .cm-editor .cm-deletedLineGutter {
+  background: var(--diff-del-gutter);
+}
+.diff-host .cm-editor.cm-merge-b .cm-changedLineGutter {
+  background: var(--diff-add-gutter);
+}
+
+/* collapsed unchanged-region pill */
+.diff-host .cm-editor .cm-collapsedLines {
+  color: var(--fg-faint);
+  background: var(--bg-app);
+  font-size: 11px;
+}

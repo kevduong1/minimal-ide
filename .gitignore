@@ -1,0 +1,19 @@
+# deps / build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# logs & misc
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+
+# `pnpm tauri icon` outputs for platforms we don't target (macOS-only app).
+# app-icon.png is the committed 1024px master; regenerate with: pnpm tauri icon
+src-tauri/icons/android/
+src-tauri/icons/ios/
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
+src-tauri/icons/icon.ico
+src-tauri/icons/64x64.png

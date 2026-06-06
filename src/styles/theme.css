@@ -1,0 +1,211 @@
+/* ---------------------------------------------------------------------------
+ * Minimal IDE — dark theme tokens. All components style themselves with these
+ * variables; never hardcode colors in component CSS.
+ * ------------------------------------------------------------------------- */
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg-app: #181a1f;
+  --bg-titlebar: #1d2026;
+  --bg-sidebar: #1f2228;
+  --bg-editor: #15171c;
+  --bg-panel: #15171c;
+  --bg-statusbar: #1d2026;
+  --bg-input: #121419;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-active: rgba(255, 255, 255, 0.09);
+  --bg-selected: rgba(47, 129, 247, 0.22);
+  --bg-overlay: #232730;
+
+  /* borders */
+  --border: #2a2e37;
+  --border-subtle: #23262e;
+  --focus-ring: #2f81f7;
+
+  /* text */
+  --fg: #d4d8e0;
+  --fg-dim: #9aa1ad;
+  --fg-faint: #6b7280;
+  --fg-inverse: #ffffff;
+
+  /* accent */
+  --accent: #2f81f7;
+  --accent-hover: #4a93f8;
+  --accent-muted: rgba(47, 129, 247, 0.35);
+  --button-bg: #2f6fd0;
+  --button-hover: #3d7fe0;
+  --button-fg: #ffffff;
+  --danger: #e5534b;
+  --warning: #e3b341;
+  --success: #3fb950;
+
+  /* git status letter colors (VSCode-style) */
+  --git-modified: #e2b340;
+  --git-added: #3fb950;
+  --git-deleted: #e5534b;
+  --git-renamed: #569cd6;
+  --git-untracked: #3fb950;
+  --git-conflict: #e5534b;
+  --git-ignored: #6b7280;
+
+  /* diff colors */
+  --diff-add-bg: rgba(63, 185, 80, 0.14);
+  --diff-add-gutter: rgba(63, 185, 80, 0.4);
+  --diff-del-bg: rgba(229, 83, 75, 0.14);
+  --diff-del-gutter: rgba(229, 83, 75, 0.4);
+  --diff-change-bg: rgba(47, 129, 247, 0.12);
+
+  /* commit graph lane palette (cycled by lane index) */
+  --graph-0: #2f81f7;
+  --graph-1: #a371f7;
+  --graph-2: #3fb950;
+  --graph-3: #db61a2;
+  --graph-4: #f0883e;
+  --graph-5: #39c5cf;
+  --graph-6: #e3b341;
+  --graph-7: #ff7b72;
+
+  /* typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, "Courier New", monospace;
+  --font-size: 13px;
+  --font-size-sm: 11.5px;
+  --font-size-mono: 12px;
+
+  /* layout metrics */
+  --titlebar-height: 38px;
+  --statusbar-height: 24px;
+  --row-height: 24px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-size);
+  color: var(--fg);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea {
+  font-family: var(--font-ui);
+  user-select: text;
+}
+
+/* slim overlay scrollbars everywhere */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button {
+  font-family: var(--font-ui);
+  font-size: var(--font-size);
+  border: none;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+/* generic icon button used across panels */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--fg-dim);
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.icon-btn:active {
+  background: var(--bg-active);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* primary action button (e.g. Commit) */
+.primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: var(--button-bg);
+  color: var(--button-fg);
+  font-weight: 500;
+  border-radius: 5px;
+}
+.primary-btn:hover {
+  background: var(--button-hover);
+}
+.primary-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* text inputs */
+.text-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: var(--font-size);
+  padding: 5px 8px;
+  outline: none;
+}
+.text-input:focus {
+  border-color: var(--focus-ring);
+}
+.text-input::placeholder {
+  color: var(--fg-faint);
+}
+
+/* truncating label helper */
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

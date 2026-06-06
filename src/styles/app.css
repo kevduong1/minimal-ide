@@ -1,0 +1,174 @@
+/* App shell layout */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-center {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.app-editor-area {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-editor);
+}
+
+.app-terminal {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  position: relative;
+}
+
+.app-sidebar {
+  flex-shrink: 0;
+  display: flex;
+  min-width: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+
+.app-sidebar-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* activity bar (slim icon strip on the far left) */
+.activity-bar {
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 6px;
+  gap: 2px;
+  background: var(--bg-titlebar);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.activity-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: var(--fg-faint);
+  position: relative;
+}
+.activity-btn:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+.activity-btn.active {
+  color: var(--fg);
+  background: var(--bg-active);
+}
+.activity-btn svg {
+  width: 19px;
+  height: 19px;
+}
+.activity-btn .badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* drag handles */
+.resizer {
+  position: absolute;
+  z-index: 30;
+}
+.resizer.vertical {
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+.resizer.horizontal {
+  left: 0;
+  top: -3px;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+}
+.resizer:hover,
+.resizer.dragging {
+  background: var(--accent-muted);
+}
+
+/* welcome screen (no repo open) */
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--fg-dim);
+}
+.welcome h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+}
+.welcome .open-btn {
+  margin-top: 8px;
+  padding: 8px 22px;
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border-radius: 6px;
+  font-weight: 500;
+}
+.welcome .open-btn:hover {
+  background: var(--button-hover);
+}
+.welcome .recent {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.welcome .recent button {
+  color: var(--accent);
+  font-size: var(--font-size);
+  padding: 3px 10px;
+  border-radius: 5px;
+}
+.welcome .recent button:hover {
+  background: var(--bg-hover);
+}
+.welcome .recent .label {
+  font-size: var(--font-size-sm);
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 2px;
+}

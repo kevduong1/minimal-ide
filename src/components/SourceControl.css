@@ -1,0 +1,358 @@
+/* Source-control sidebar panel (VSCode SCM style) */
+.source-control {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-sidebar);
+}
+
+/* ------------------------------------------------------------------ */
+/* panel header                                                        */
+/* ------------------------------------------------------------------ */
+.sc-header {
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 6px 0 12px;
+}
+.sc-header-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+/* ------------------------------------------------------------------ */
+/* commit box                                                          */
+/* ------------------------------------------------------------------ */
+.sc-commit-box {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.commit-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: var(--font-size);
+  line-height: 18px;
+  padding: 5px 8px;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  min-height: 30px;
+  max-height: 120px; /* 6 lines */
+}
+.commit-input:focus {
+  border-color: var(--focus-ring);
+}
+.commit-input::placeholder {
+  color: var(--fg-faint);
+}
+
+/* split commit button */
+.sc-commit-row {
+  position: relative;
+  display: flex;
+}
+.sc-commit-btn {
+  flex: 1;
+  min-width: 0;
+  border-radius: 5px 0 0 5px;
+}
+.sc-commit-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.sc-commit-caret {
+  width: 24px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border-radius: 0 5px 5px 0;
+  border-left: 1px solid var(--border);
+}
+.sc-commit-caret:hover {
+  background: var(--button-hover);
+}
+.sc-commit-caret:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.sc-commit-caret svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* dropdown menu */
+.sc-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+}
+.sc-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+}
+.sc-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: var(--font-size);
+  color: var(--fg);
+}
+.sc-menu button:hover {
+  background: var(--bg-hover);
+}
+.sc-menu button:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* sections                                                            */
+/* ------------------------------------------------------------------ */
+.sc-changes {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-subtle);
+}
+.sc-changes .sc-section + .sc-section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sc-section-header {
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 2px;
+  background: var(--bg-sidebar);
+  cursor: pointer;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.sc-section-header:hover {
+  background: var(--bg-hover);
+}
+.sc-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+}
+.sc-chevron svg {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.08s ease;
+}
+.sc-chevron.open svg {
+  transform: rotate(90deg);
+}
+.sc-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  min-width: 0;
+}
+.sc-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  height: 15px;
+  line-height: 15px;
+  border-radius: 8px;
+  background: var(--bg-active);
+  color: var(--fg-dim);
+  font-size: 10.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.sc-section-actions {
+  display: none;
+  align-items: center;
+  margin-left: auto;
+}
+.sc-section-header:hover .sc-section-actions {
+  display: flex;
+}
+.sc-section-actions .icon-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.sc-section-actions .icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ------------------------------------------------------------------ */
+/* rows                                                                */
+/* ------------------------------------------------------------------ */
+.sc-row {
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 18px;
+  cursor: pointer;
+}
+.sc-row:hover {
+  background: var(--bg-hover);
+}
+.sc-row-actions {
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+}
+.sc-row:hover .sc-row-actions {
+  display: flex;
+}
+.sc-row .icon-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.sc-row .icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.sc-file-name {
+  font-size: 13px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.sc-file-dir {
+  font-size: var(--font-size-sm);
+  color: var(--fg-faint);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sc-file-letter {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* status colors come from statusColor() in lib/status (inline style) */
+.sc-file-name.deleted {
+  text-decoration: line-through;
+}
+
+/* empty state */
+.sc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 26px 8px;
+  color: var(--fg-faint);
+  font-size: var(--font-size);
+}
+.sc-empty svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ------------------------------------------------------------------ */
+/* stashes                                                             */
+/* ------------------------------------------------------------------ */
+.sc-stashes {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.sc-stash-input-row {
+  padding: 4px 8px;
+}
+.sc-stash-input-row .text-input {
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+.sc-stash-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+.sc-stash-row {
+  padding-left: 10px;
+}
+.sc-stash-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+}
+.sc-stash-icon svg {
+  width: 13px;
+  height: 13px;
+}
+.sc-stash-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--fg);
+}
+
+/* ------------------------------------------------------------------ */
+/* commits graph                                                       */
+/* ------------------------------------------------------------------ */
+.sc-commits {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-subtle);
+  min-height: 0;
+}
+.sc-commits.open {
+  flex: 1 1 0;
+  min-height: 120px;
+}
+.sc-graph-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sc-graph-wrap > * {
+  flex: 1;
+  min-height: 0;
+}
