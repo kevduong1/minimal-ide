@@ -12,6 +12,9 @@ import {
 import { useUiStore } from "./stores/ui";
 import { closeTabSafely } from "./stores/editor";
 import { projectColorVar } from "./lib/projectColors";
+import { loadTasks, sortForPicker, type TaskDef } from "./lib/tasks";
+import { runTask } from "./lib/taskRunner";
+import TaskPicker from "./components/TaskPicker";
 import Titlebar from "./components/Titlebar";
 import StatusBar from "./components/StatusBar";
 import FileExplorer from "./components/FileExplorer";
@@ -153,8 +156,38 @@ export default function App() {
   const togglePanel = useUiStore((s) => s.togglePanel);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
+  // ⌘⇧B task picker (null = closed). The lone default build task runs
+  // without the picker; everything else (or a parse error) opens it.
+  const [taskPick, setTaskPick] = useState<{
+    ws: Workspace;
+    tasks: TaskDef[];
+    error: string | null;
+  } | null>(null);
+
+  // The picker is workspace-bound: if its workspace closes or another one
+  // becomes active underneath it (titlebar click — keyboard shortcuts are
+  // swallowed by the picker itself), a pick would run the task in an
+  // invisible dock. Drop the picker instead. runTask's own liveness check
+  // backstops the no-picker (lone default build) path.
+  useEffect(() => {
+    if (taskPick && taskPick.ws.path !== activePath) setTaskPick(null);
+  }, [taskPick, activePath]);
+
   // global keyboard shortcuts
   useEffect(() => {
+    const runBuildTask = async (ws: Workspace) => {
+      let tasks: TaskDef[] = [];
+      let error: string | null = null;
+      try {
+        tasks = await loadTasks(ws.path);
+      } catch (e) {
+        error = String(e);
+      }
+      const defaults = tasks.filter((t) => t.isDefaultBuild);
+      if (defaults.length === 1) runTask(ws, defaults[0]);
+      else setTaskPick({ ws, tasks: sortForPicker(tasks), error });
+    };
+
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
@@ -164,6 +197,12 @@ export default function App() {
       } else if (e.key === "b" && !e.shiftKey) {
         e.preventDefault();
         toggleSidebar();
+      } else if (e.key.toLowerCase() === "b" && e.shiftKey) {
+        // ⌘⇧B: run the (.vscode/tasks.json) build task, VS Code-style
+        e.preventDefault();
+        const { workspaces, activePath } = useWorkspacesStore.getState();
+        const ws = workspaces.find((w) => w.path === activePath);
+        if (ws) void runBuildTask(ws);
       } else if (e.key === "w" && !e.shiftKey) {
         e.preventDefault();
         const { workspaces, activePath } = useWorkspacesStore.getState();
@@ -241,6 +280,17 @@ export default function App() {
         </div>
       </div>
       <StatusBar />
+      {taskPick && (
+        <TaskPicker
+          tasks={taskPick.tasks}
+          error={taskPick.error}
+          onRun={(t) => {
+            setTaskPick(null);
+            runTask(taskPick.ws, t);
+          }}
+          onClose={() => setTaskPick(null)}
+        />
+      )}
     </div>
   );
 }

@@ -56,8 +56,9 @@ export const pruneActivity = (
 };
 
 export interface TerminalState extends dock.DockState<WorkspaceTerminal> {
-  /** New terminal as a tab of the active group (or a fresh root group). */
-  newTerminal: () => string;
+  /** New terminal as a tab of the active group (or a fresh root group).
+   *  Default title "Terminal N"; the task runner passes the task label. */
+  newTerminal: (title?: string) => string;
   /** New terminal in its own group, split right of the active group. */
   splitActive: () => string;
   /** Structural removal only — session disposal is the caller's job. */
@@ -95,14 +96,14 @@ export const createTerminalStore = (): TerminalStore =>
     root: null,
     activeGroupId: null,
 
-    newTerminal: () => {
+    newTerminal: (title) => {
       const id = crypto.randomUUID();
       set((s) =>
         applied(
           s,
           dock.addTerminal(s, {
             id,
-            title: `Terminal ${nextTitleNumber(s.terminals)}`,
+            title: title?.trim() || `Terminal ${nextTitleNumber(s.terminals)}`,
           }),
         ),
       );

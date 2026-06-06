@@ -17,6 +17,7 @@ import {
   type RefLabel,
 } from "../lib/ipc";
 import { statusColor, statusLetter, statusPaths } from "../lib/status";
+import { basename, dirname } from "../lib/path";
 import GitGraph from "./GitGraph";
 import {
   IcApply,
@@ -41,16 +42,6 @@ import {
   IcTrash,
 } from "./icons";
 import "./SourceControl.css";
-
-/* ----------------------------------------------------------------------- */
-/* Path helpers                                                             */
-/* ----------------------------------------------------------------------- */
-
-const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
-const dirname = (p: string) => {
-  const i = p.lastIndexOf("/");
-  return i === -1 ? "" : p.slice(0, i);
-};
 
 /* ----------------------------------------------------------------------- */
 /* Collapsible section                                                      */

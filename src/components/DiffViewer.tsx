@@ -15,6 +15,7 @@ import {
   onRepoChanged,
   type DiffPayload,
 } from "../lib/ipc";
+import { basename } from "../lib/path";
 import type { Tab } from "../stores/editor";
 import {
   BannerDismiss,
@@ -42,8 +43,6 @@ const REFETCH_DEBOUNCE_MS = 250;
 
 const loadMode = (): DiffMode =>
   localStorage.getItem(MODE_KEY) === "unified" ? "unified" : "split";
-
-const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 
 const COLLAPSE = { margin: 3, minSize: 4 };
 

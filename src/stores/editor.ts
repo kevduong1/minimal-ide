@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { DiffKind, StatusCode } from "../lib/ipc";
+import { basename } from "../lib/path";
 import { useUiStore } from "./ui";
 
 /** Opening a tab must actually show it: a maximized bottom panel covers the
@@ -37,8 +38,6 @@ export interface EditorState {
 }
 
 export type EditorStore = StoreApi<EditorState>;
-
-const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 
 // repoPath is part of the id: the same file/kind in two repos is two tabs.
 const diffTabId = (req: DiffRequest) =>

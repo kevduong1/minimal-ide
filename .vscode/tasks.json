@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "typecheck",
+      "type": "shell",
+      "command": "npx tsc --noEmit && echo OK",
+      "group": "build",
+      "detail": "Frontend typecheck (tsc --noEmit)"
+    },
+    {
+      "label": "cargo check",
+      "type": "shell",
+      "command": "cargo check",
+      "options": { "cwd": "${workspaceFolder}/src-tauri" },
+      "group": "build",
+      "presentation": { "panel": "dedicated" },
+      "detail": "Backend typecheck"
+    }
+  ]
+}

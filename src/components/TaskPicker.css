@@ -1,0 +1,74 @@
+/* ⌘⇧B task quick-pick: top-centered overlay, VS Code-style. The backdrop is
+   a transparent click-catcher (same pattern as .sc-menu-backdrop). */
+.task-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.task-picker {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 480px;
+  max-width: calc(100vw - 80px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+
+.task-picker-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.task-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  text-align: left;
+}
+/* selection follows the keyboard AND the mouse (onMouseEnter), so a
+   separate :hover background would just double up */
+.task-picker-item.selected {
+  background: var(--bg-selected);
+}
+
+.task-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-picker-badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.task-picker-detail {
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+}
+
+.task-picker-empty {
+  padding: 10px;
+  text-align: center;
+  color: var(--fg-faint);
+  user-select: text;
+}

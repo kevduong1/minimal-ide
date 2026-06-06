@@ -8,19 +8,17 @@
  * the workspace closes.
  */
 import { memo, useEffect, useRef } from "react";
-import { type WorkspaceTerminal, type TerminalStore } from "../stores/terminal";
+import { type WorkspaceTerminal } from "../stores/terminal";
 import { useWorkspace } from "../stores/workspaces";
-import { disposeSession, getOrCreateSession, getSession } from "../lib/termSessions";
+import { getSession } from "../lib/termSessions";
+import {
+  closeWorkspaceTerminal,
+  getOrCreateWorkspaceSession,
+} from "../lib/workspaceSessions";
 import { Dock, type DockPaneProps } from "./Dock";
 import { IcTerminal } from "./icons";
 import "@xterm/xterm/css/xterm.css";
 import "./TerminalPanel.css";
-
-/** Close glue: kill the PTY first, then remove the tab from the layout. */
-export function closeWorkspaceTerminal(store: TerminalStore, id: string): void {
-  disposeSession(id);
-  store.getState().closeTerminal(id);
-}
 
 const TerminalPane = memo(function TerminalPane({
   terminal,
@@ -37,16 +35,7 @@ const TerminalPane = memo(function TerminalPane({
   // ONLY — drag-and-drop survival depends on this. The PTY dies through
   // closeWorkspaceTerminal (tab ×, shell exit) or workspace close.
   useEffect(() => {
-    const session = getOrCreateSession({
-      id: terminal.id,
-      cwd: ws.path,
-      agent: false,
-      onExit: (_code, early) => {
-        // Normal exit closes the tab; an early failure keeps the corpse
-        // readable (spawn error, bad dotfiles) for the user to close.
-        if (!early) closeWorkspaceTerminal(ws.terminal, terminal.id);
-      },
-    });
+    const session = getOrCreateWorkspaceSession(ws, terminal.id);
     session.attach(hostRef.current!);
     return () => session.detach();
     // eslint-disable-next-line react-hooks/exhaustive-deps

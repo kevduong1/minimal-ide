@@ -83,6 +83,10 @@ export interface TermSessionOptions {
 export interface TermSession {
   readonly id: string;
   readonly term: Terminal;
+  /** True once the PTY has exited. Early-exit corpses stay attached and
+   *  readable, but writes to them vanish (the backend dropped the PTY) —
+   *  callers that reuse sessions (taskRunner) must check this first. */
+  readonly exited: boolean;
   /**
    * (Re)parent the session into a React-owned host element. First call
    * opens xterm and spawns the shell; later calls just move the live DOM
@@ -92,6 +96,10 @@ export interface TermSession {
   /** Remove from the DOM WITHOUT disposing — buffer, PTY, listeners survive. */
   detach(): void;
   focus(): void;
+  /** Type text into the shell (queued until the PTY spawn settles, so it's
+   *  safe immediately after the session is created — the task runner sends
+   *  the command line before the pane host has even mounted). */
+  sendText(data: string): void;
   /** Clear the tracker's attention state (user clicked into the terminal). */
   acknowledge(): void;
   /** The ONLY path that kills the PTY. Idempotent. */
@@ -113,6 +121,10 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
   let spawnStarted = false;
   let spawnPromise: Promise<void> | null = null;
   let spawnedAt = 0;
+  let shellReady = false;
+  let exited = false;
+  /** Input from sendText() before the PTY exists; flushed after spawn. */
+  let pendingInput = "";
   let opened = false;
   let unData: UnlistenFn | null = null;
   let unExit: UnlistenFn | null = null;
@@ -206,6 +218,7 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
       unData = u1;
 
       const u2 = await onPtyExit(id, (code) => {
+        exited = true;
         // A shell dying non-zero right after spawn (bad $SHELL, deleted
         // project dir) would close the terminal and destroy its own error
         // output — keep the corpse readable instead.
@@ -238,6 +251,11 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
         if (!disposed && (term.cols !== spawnCols || term.rows !== spawnRows)) {
           void ptyResize(id, term.cols, term.rows).catch(() => {});
         }
+        shellReady = true;
+        if (!disposed && pendingInput) {
+          void ptyWrite(id, pendingInput).catch(() => {});
+        }
+        pendingInput = "";
       } catch (e) {
         if (!disposed) {
           term.write(`\r\n\x1b[31mFailed to spawn shell: ${String(e)}\x1b[0m\r\n`);
@@ -290,6 +308,9 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
   return {
     id,
     term,
+    get exited() {
+      return exited;
+    },
 
     attach(host) {
       if (disposed) return;
@@ -323,6 +344,12 @@ export function createTermSession(opts: TermSessionOptions): TermSession {
 
     focus() {
       if (!disposed) term.focus();
+    },
+
+    sendText(data) {
+      if (disposed) return;
+      if (shellReady) void ptyWrite(id, data).catch(() => {});
+      else pendingInput += data;
     },
 
     acknowledge() {
