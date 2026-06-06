@@ -29,12 +29,18 @@ export interface EditorState {
   activeTabId: string | null;
   /** Tab ids with unsaved changes. */
   dirty: Record<string, boolean>;
+  /** Pending cursor reveal (search "open at line"), consumed by Editor.tsx.
+      The nonce makes repeated jumps to the same spot distinct and lets the
+      consumer clear idempotently (StrictMode double-effects). */
+  reveal: { tabId: string; line: number; column: number; nonce: number } | null;
 
-  openFile: (path: string) => void;
+  openFile: (path: string, at?: { line: number; column?: number }) => void;
   openDiff: (req: DiffRequest) => void;
   closeTab: (id: string) => void;
   setActive: (id: string) => void;
   markDirty: (id: string, dirty: boolean) => void;
+  /** Drop the reveal request, but only if it is still the one consumed. */
+  clearReveal: (nonce: number) => void;
 }
 
 export type EditorStore = StoreApi<EditorState>;
@@ -43,14 +49,17 @@ export type EditorStore = StoreApi<EditorState>;
 const diffTabId = (req: DiffRequest) =>
   `diff:${req.repoPath}:${req.kind}:${req.oid ?? ""}:${req.path}`;
 
+let revealNonce = 0;
+
 /** Per-workspace editor-tab store; created by the workspaces store. */
 export const createEditorStore = (): EditorStore =>
   createStore<EditorState>((set, get) => ({
     tabs: [],
     activeTabId: null,
     dirty: {},
+    reveal: null,
 
-    openFile: (path) => {
+    openFile: (path, at) => {
       const id = `file:${path}`;
       const { tabs } = get();
       if (!tabs.some((t) => t.id === id)) {
@@ -58,7 +67,12 @@ export const createEditorStore = (): EditorStore =>
           tabs: [...tabs, { id, kind: "file", path, title: basename(path) }],
         });
       }
-      set({ activeTabId: id });
+      set({
+        activeTabId: id,
+        reveal: at
+          ? { tabId: id, line: at.line, column: at.column ?? 1, nonce: ++revealNonce }
+          : get().reveal,
+      });
       revealEditor();
     },
 
@@ -99,6 +113,8 @@ export const createEditorStore = (): EditorStore =>
     setActive: (id) => set({ activeTabId: id }),
     markDirty: (id, d) =>
       set((s) => (s.dirty[id] === d ? s : { dirty: { ...s.dirty, [id]: d } })),
+    clearReveal: (nonce) =>
+      set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s)),
   }));
 
 /**

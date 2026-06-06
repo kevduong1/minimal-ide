@@ -113,6 +113,41 @@ export interface FileContent {
 }
 
 // ---------------------------------------------------------------------------
+// Search types
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceFiles {
+  /** Repo-root-relative POSIX paths, sorted. */
+  files: string[];
+  truncated: boolean;
+}
+
+export interface SearchMatch {
+  /** 1-based. */
+  lineNumber: number;
+  /** 1-based UTF-16 column of the match start in the full line (for the cursor). */
+  column: number;
+  /** Display window around the match (long lines are trimmed server-side). */
+  text: string;
+  /** UTF-16 highlight range within `text`. */
+  start: number;
+  end: number;
+}
+
+export interface SearchFileResult {
+  /** Repo-root-relative POSIX path. */
+  file: string;
+  matches: SearchMatch[];
+}
+
+export interface SearchResult {
+  files: SearchFileResult[];
+  totalMatches: number;
+  /** A result cap was hit: there may be more matches than returned. */
+  truncated: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Git commands
 // ---------------------------------------------------------------------------
 
@@ -264,6 +299,32 @@ export const fsReadFile = (path: string): Promise<FileContent> =>
 
 export const fsWriteFile = (path: string, text: string): Promise<void> =>
   invoke("fs_write_file", { path, text });
+
+// ---------------------------------------------------------------------------
+// Search commands
+// ---------------------------------------------------------------------------
+
+/**
+ * All worktree files (gitignore-respected, `.git` excluded, dotfiles
+ * included), capped at 50k. Cheap paths-only walk — fetched fresh per
+ * quick-open, no caching/watcher involved.
+ */
+export const listWorkspaceFiles = (repoPath: string): Promise<WorkspaceFiles> =>
+  invoke("list_workspace_files", { repoPath });
+
+/**
+ * Content search over the worktree (parallel walk; binary/oversized files
+ * skipped with the editor's rules; 2000-match global cap). Rejects with the
+ * regex error message when `regex` is set and the pattern is invalid.
+ */
+export const searchWorkspace = (
+  repoPath: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  regex: boolean,
+): Promise<SearchResult> =>
+  invoke("search_workspace", { repoPath, query, caseSensitive, wholeWord, regex });
 
 // ---------------------------------------------------------------------------
 // Repo watcher

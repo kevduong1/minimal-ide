@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useWorkspacesStore } from "./workspaces";
 
-export type SidebarTab = "explorer" | "scm";
+export type SidebarTab = "explorer" | "search" | "scm";
 /** Bottom-panel groups: per-workspace terminals vs the global agent dock. */
 export type PanelGroup = "terminal" | "agent";
 
@@ -17,8 +17,14 @@ interface UiState {
       opening an editor tab clears it (stores/editor.ts) so the file is
       actually visible. */
   panelMaximized: boolean;
+  /** Bumped by showSearch (⌘⇧F); the active workspace's SearchPanel focuses
+      its input on change — a counter so repeat presses refocus. */
+  searchFocusNonce: number;
 
   setSidebarTab: (tab: SidebarTab) => void;
+  /** ⌘⇧F: reveal the sidebar on the search tab and focus the query input.
+      (setSidebarTab would TOGGLE the sidebar closed when already there.) */
+  showSearch: () => void;
   toggleSidebar: () => void;
   setSidebarWidth: (w: number) => void;
   togglePanel: () => void;
@@ -41,6 +47,7 @@ export const useUiStore = create<UiState>((set) => ({
   panelHeight: 280,
   panelGroup: "terminal",
   panelMaximized: false,
+  searchFocusNonce: 0,
 
   setSidebarTab: (tab) =>
     set((s) =>
@@ -48,6 +55,12 @@ export const useUiStore = create<UiState>((set) => ({
         ? { sidebarVisible: false }
         : { sidebarTab: tab, sidebarVisible: true },
     ),
+  showSearch: () =>
+    set((s) => ({
+      sidebarTab: "search",
+      sidebarVisible: true,
+      searchFocusNonce: s.searchFocusNonce + 1,
+    })),
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
   setSidebarWidth: (w) => set({ sidebarWidth: clamp(w, 200, 600) }),
   togglePanel: () =>

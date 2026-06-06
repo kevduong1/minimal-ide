@@ -15,14 +15,16 @@ import { projectColorVar } from "./lib/projectColors";
 import { loadTasks, sortForPicker, type TaskDef } from "./lib/tasks";
 import { runTask } from "./lib/taskRunner";
 import TaskPicker from "./components/TaskPicker";
+import QuickOpen from "./components/QuickOpen";
 import Titlebar from "./components/Titlebar";
 import StatusBar from "./components/StatusBar";
 import FileExplorer from "./components/FileExplorer";
+import SearchPanel from "./components/SearchPanel";
 import SourceControl from "./components/SourceControl";
 import EditorArea from "./components/EditorArea";
 import Panel from "./components/Panel";
 import { Resizer } from "./components/Resizer";
-import { IcBranch, IcFile } from "./components/icons";
+import { IcBranch, IcFile, IcSearch } from "./components/icons";
 
 /** Slim far-left icon strip for switching sidebar panels. */
 function ActivityBar() {
@@ -40,6 +42,13 @@ function ActivityBar() {
         onClick={() => setSidebarTab("explorer")}
       >
         <IcFile />
+      </button>
+      <button
+        className={`activity-btn ${active("search") ? "active" : ""}`}
+        title="Search (⌘⇧F)"
+        onClick={() => setSidebarTab("search")}
+      >
+        <IcSearch />
       </button>
       <button
         className={`activity-btn ${active("scm") ? "active" : ""}`}
@@ -123,7 +132,13 @@ function WorkspaceSidebarContent({ visible }: { visible: boolean }) {
       className="app-sidebar-content"
       style={{ display: visible ? undefined : "none" }}
     >
-      {sidebarTab === "explorer" ? <FileExplorer /> : <SourceControl />}
+      {sidebarTab === "explorer" ? (
+        <FileExplorer />
+      ) : sidebarTab === "search" ? (
+        <SearchPanel />
+      ) : (
+        <SourceControl />
+      )}
     </div>
   );
 }
@@ -173,6 +188,13 @@ export default function App() {
     if (taskPick && taskPick.ws.path !== activePath) setTaskPick(null);
   }, [taskPick, activePath]);
 
+  // ⌘P quick open (null = closed). Workspace-bound like the task picker:
+  // its file list belongs to one workspace, so navigating away drops it.
+  const [quickOpen, setQuickOpen] = useState<Workspace | null>(null);
+  useEffect(() => {
+    if (quickOpen && quickOpen.path !== activePath) setQuickOpen(null);
+  }, [quickOpen, activePath]);
+
   // global keyboard shortcuts
   useEffect(() => {
     const runBuildTask = async (ws: Workspace) => {
@@ -203,6 +225,16 @@ export default function App() {
         const { workspaces, activePath } = useWorkspacesStore.getState();
         const ws = workspaces.find((w) => w.path === activePath);
         if (ws) void runBuildTask(ws);
+      } else if (e.key.toLowerCase() === "f" && e.shiftKey) {
+        // ⌘⇧F: workspace search — reveal the sidebar + focus the query input
+        e.preventDefault();
+        useUiStore.getState().showSearch();
+      } else if (e.key === "p" && !e.shiftKey && !e.altKey) {
+        // ⌘P: quick-open a file by fuzzy name
+        e.preventDefault(); // WKWebView would otherwise open the print dialog
+        const { workspaces, activePath } = useWorkspacesStore.getState();
+        const ws = workspaces.find((w) => w.path === activePath);
+        if (ws) setQuickOpen(ws);
       } else if (e.key === "w" && !e.shiftKey) {
         e.preventDefault();
         const { workspaces, activePath } = useWorkspacesStore.getState();
@@ -290,6 +322,9 @@ export default function App() {
           }}
           onClose={() => setTaskPick(null)}
         />
+      )}
+      {quickOpen && (
+        <QuickOpen ws={quickOpen} onClose={() => setQuickOpen(null)} />
       )}
     </div>
   );

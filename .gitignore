@@ -17,3 +17,4 @@ src-tauri/icons/Square*.png
 src-tauri/icons/StoreLogo.png
 src-tauri/icons/icon.ico
 src-tauri/icons/64x64.png
+.claude/worktrees

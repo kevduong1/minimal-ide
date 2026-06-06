@@ -4,6 +4,7 @@
 mod fsops;
 mod git;
 mod pty;
+mod search;
 mod watcher;
 
 use tauri::Manager;
@@ -50,6 +51,9 @@ fn main() {
             fsops::fs_read_dir,
             fsops::fs_read_file,
             fsops::fs_write_file,
+            // search
+            search::list_workspace_files,
+            search::search_workspace,
             // watcher
             watcher::watch_repo,
             watcher::unwatch_repo,

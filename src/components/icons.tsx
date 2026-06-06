@@ -148,6 +148,62 @@ export const IcCollapseAll = (props: IconProps) => (
 );
 
 /* ------------------------------------------------------------------------- */
+/* Search                                                                     */
+/* ------------------------------------------------------------------------- */
+
+export const IcSearch = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="7" cy="7" r="4.5" />
+    <path d="M10.3 10.3 14 14" />
+  </Svg>
+);
+/** "Aa" — case-sensitive search toggle. */
+export const IcCaseSensitive = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M1.5 12 4.5 4l3 8" />
+    <path d="M2.6 9.4h3.8" />
+    <path d="M13.5 12V7.7a2 2 0 0 0-3.9-.6" />
+    <path d="M13.5 9.8a2.4 2.4 0 1 1-2.4-2.3 2.4 2.4 0 0 1 2.4 2.3z" />
+  </Svg>
+);
+/** "ab" with underline — whole-word search toggle. */
+export const IcWholeWord = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M6 10.5V7.6a1.8 1.8 0 0 0-3.5-.5" />
+    <path d="M6 8.7a2.1 2.1 0 1 1-2.1-2 2.1 2.1 0 0 1 2.1 2z" />
+    <path d="M9.8 3.5v7" />
+    <path d="M9.8 8.7a1.9 1.9 0 1 0 1.9-2 1.9 1.9 0 0 0-1.9 2z" />
+    <path d="M2 13.5h12" />
+  </Svg>
+);
+/** ".*" — regex search toggle. */
+export const IcRegex = (props: IconProps) => (
+  <Svg {...props}>
+    <circle cx="4" cy="12" r="1.1" fill="currentColor" stroke="none" />
+    <path d="M10.5 3.5v6" />
+    <path d="M7.9 5 13.1 8" />
+    <path d="M7.9 8 13.1 5" />
+  </Svg>
+);
+/** Box swapped out via a return arrow — replace next match. */
+export const IcReplace = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="2" y="2" width="6" height="6" rx="1" />
+    <path d="M13.5 4.5v5a2 2 0 0 1-2 2H5.5" />
+    <path d="M7.5 9.5 5.5 11.5l2 2" />
+  </Svg>
+);
+/** Two boxes + return arrow — replace all matches. */
+export const IcReplaceAll = (props: IconProps) => (
+  <Svg {...props}>
+    <rect x="1.5" y="1.5" width="5" height="5" rx="1" />
+    <rect x="8.5" y="1.5" width="5" height="5" rx="1" />
+    <path d="M13.5 8.5v1a2 2 0 0 1-2 2H5.5" />
+    <path d="M7.5 9.5 5.5 11.5l2 2" />
+  </Svg>
+);
+
+/* ------------------------------------------------------------------------- */
 /* Chrome & generic actions                                                   */
 /* ------------------------------------------------------------------------- */
 

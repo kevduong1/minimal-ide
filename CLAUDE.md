@@ -14,6 +14,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/ipc.ts` | Typed IPC contract — single source of truth for command names and payload shapes |
 | `src/lib/status.ts` | Shared status-code helpers: `statusLetter`, `statusColor`, `statusPaths` (renames span two paths!) |
 | `src/lib/path.ts` | Shared POSIX-path helpers (`basename`, `dirname`) — import these, don't redefine per file |
+| `src/lib/fuzzy.ts` | Hand-rolled two-phase fuzzy matcher for quick open: O(n) subsequence reject over the whole list, then a scoring DP (boundary/camelCase/basename/consecutive bonuses) returning matched positions for highlighting |
 | `src/lib/graphLayout.ts` | Pure lane-layout algorithm for the commit graph (algorithm documented in-file) |
 | `src/lib/terminalActivity.ts` | Per-pane busy/attention heuristics for **agent** terminals only (echo-suppressed output → busy; BEL/OSC 9/777 + quiet-while-away → attention; OSC 133/633 marks take over when present) |
 | `src/lib/termSession.ts` | Framework-free xterm+PTY session (attach/detach reparenting; ONLY `dispose()` kills the PTY); also hosts `XTERM_THEME` |
@@ -24,23 +25,27 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src/lib/taskRunner.ts` | Task execution glue: types the assembled command into a workspace dock terminal (reused per `presentation.panel` shared/dedicated/new; ^C first on reuse), reveals per `presentation.reveal` |
 | `src/lib/dockTree.ts` | Pure dock layout-tree model shared by both docks: split/group types, `normalize()` invariants, move/split/resize state ops, persistence sanitizer |
 | `src/lib/projectColors.ts` | Stable per-project palette-index assignment (`projectColorIndex`/`projectColorVar`, localStorage-persisted) — feeds tab/badge tints and the app-wide `--accent` override |
-| `src/stores/workspaces.ts` | Workspace registry: one workspace per open repo (own repo/editor/terminal stores), open/close/setActive, session restore, `switchToProject` (agent-terminal navigation), `WorkspaceContext` + `useWorkspace`/`useRepo`/`useEditor`/`useTerminal` hooks |
+| `src/stores/workspaces.ts` | Workspace registry: one workspace per open repo (own repo/editor/terminal/search stores), open/close/setActive, session restore, `switchToProject` (agent-terminal navigation), `WorkspaceContext` + `useWorkspace`/`useRepo`/`useEditor`/`useTerminal`/`useSearch` hooks |
 | `src/stores/repo.ts` | Per-workspace repo store factory: status/log/stashes, git mutations (return `Promise<boolean>`), log branch filter (`logFilter`/`setLogFilter`), watcher wiring (`init`/`dispose`), status-bar `error` |
-| `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved) |
+| `src/stores/editor.ts` | Per-workspace editor-tab store factory (`Tab = file \| diff`), dirty tracking, `closeTabSafely(store, id)` (confirms unsaved), `openFile(path, at?)` + nonce-gated `reveal` request (cursor-to-line, consumed by Editor.tsx) |
+| `src/stores/search.ts` | Per-workspace search store factory (⌘⇧F state: query/toggles/results); 250 ms debounce + sequence-number stale-result guard live in the store closure |
 | `src/stores/terminal.ts` | Per-workspace terminal dock store factory (plain shells, dockTree layout, NOT persisted; never touches xterm or IPC); also exports the shared `PaneActivity`/`aggregateActivity` activity types |
 | `src/stores/agentTerminals.ts` | GLOBAL agent-terminal dock store: dockTree layout, terminal↔project bindings, deduped default titles, localStorage persistence (`minimal-ide:agent-terminals`) |
 | `src/stores/ui.ts` | Global (workspace-independent) sidebar/panel visibility, sizes, panel group (`terminal`/`agent`, `useEffectivePanelGroup`), panel maximize (`panelMaximized` — cleared by hiding the panel or opening an editor tab) |
-| `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘⇧B ⌘W ⌘1–9), welcome screen |
+| `src/App.tsx` | Shell layout, per-workspace `WorkspaceView`s (all mounted; inactive hidden), global shortcuts (⌘\` ⌘B ⌘⇧B ⌘P ⌘⇧F ⌘W ⌘1–9), welcome screen |
 | `src/components/Titlebar.tsx` | Workspace tab strip (switch/close/add) + active repo's branch pill and fetch |
 | `src/components/icons.tsx` | ALL shared SVG icons (16×16 stroke glyphs) — add new icons here, not inline |
 | `src/components/SourceControl.tsx` | SCM panel: stage/unstage/discard, commit (+amend, &push), stashes, commit-graph branch filter dropdown |
 | `src/components/GitGraph.tsx` | Hand-rolled virtualized commit list + SVG lane rail (no virtualization deps); ⌘/shift multi-select + right-click menu (checkout, create branch, squash, copy SHA) |
 | `src/components/Editor.tsx` | CodeMirror file editor + shared CM helpers (theme, languageFor, editKeymap) + unsaved-draft cache + external-change reload |
+| `src/components/EditorSearch.tsx` | VS Code-style floating find/replace widget (⌘F, top-right overlay) replacing @codemirror/search's default panel; per-EditorView React root via custom `createPanel`; match counting goes through an escaped-regex twin of literal queries (RegExpCursor ≫ string cursor on big docs); shared by Editor + DiffViewer |
 | `src/components/DiffViewer.tsx` | @codemirror/merge split/unified diff; worktree diffs editable (⌘S), auto-refetch on repo change |
 | `src/components/Panel.tsx` | Global bottom panel (under the editor column): group tabs (Agent Terminals / Terminal) + per-group actions in one header row; per-workspace terminal docks (all mounted, display:none) + agent dock mounted once; maximize toggle (button or header double-click) fills the center column |
 | `src/components/Dock.tsx` | Generic dockable terminal grid shared by both groups: recursive split/group rendering, per-group tab strips, double-click tab rename, pointer-capture DnD (strip insert caret / 5-zone edge splits), split resizers — flavor injected via `Pane`/`TabIcon`/`TabBadge`/`Empty` props |
 | `src/components/TerminalPanel.tsx` | Workspace flavor of Dock: plain registry sessions at the workspace root, auto-first-terminal (session/close glue lives in `lib/workspaceSessions.ts`) |
 | `src/components/TaskPicker.tsx` | ⌘⇧B quick-pick overlay (filter + arrow/enter keyboard nav); a lone default build task skips it (App.tsx) |
+| `src/components/QuickOpen.tsx` | ⌘P fuzzy file picker overlay (TaskPicker pattern); fetches the gitignore-aware file list per open, renders top 100 with match highlighting |
+| `src/components/SearchPanel.tsx` | ⌘⇧F sidebar search view: query + case/word/regex toggles, per-file collapsible result groups, click opens the file at the match line (`openFile(path, at)`) |
 | `src/components/AgentDock.tsx` | Agent flavor of Dock: masquerade/tracked sessions, project badge overlay (rename shares the tab's title), active-project highlight ring, click-to-switch project, disconnected ⊘ |
 | `src/components/Resizer.tsx` | Generic drag-to-resize handle (sidebar, panel, dock splits) |
 | `src/components/FileExplorer.tsx` | Lazy directory tree (per-dir cache + expanded set) |
@@ -48,6 +53,7 @@ zustand). No tests; correctness relies on typecheck + manual verification.
 | `src-tauri/src/pty.rs` | PTY sessions keyed by frontend UUID; output streamed as base64 `pty-data:<id>` events with ack-based flow control (`pty_ack`, reader parks above 1 MiB unacked); kill = SIGHUP → 500 ms → SIGKILL process group |
 | `src-tauri/src/watcher.rs` | Debounced repo watchers (one per open repo, keyed by root) → `repo-changed` event `{repoPath, gitChanged}` |
 | `src-tauri/src/fsops.rs` | fs_read_dir / fs_read_file (5 MB cap, NUL + UTF-8 binary sniff) / atomic fs_write_file |
+| `src-tauri/src/search.rs` | `ignore`-crate worktree walks: list_workspace_files (quick open, 50k cap) + search_workspace (parallel walk, fsops's binary/size skip rules, 2000-match cap, UTF-16 offsets for JS/CodeMirror) |
 
 ## IPC contract rule
 

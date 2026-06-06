@@ -25,6 +25,7 @@ import {
   readOnlyExtension,
   type CmExtension,
 } from "./Editor";
+import { editorSearch } from "./EditorSearch";
 import { IcRows, IcSplit } from "./icons";
 import "./EditorArea.css";
 
@@ -166,7 +167,7 @@ export default function DiffViewer({ tab }: { tab: DiffTab }) {
     if (!host) return;
 
     let disposed = false;
-    const shared: CmExtension[] = [basicSetup, editorTheme, lang ?? []];
+    const shared: CmExtension[] = [basicSetup, editorTheme, editorSearch, lang ?? []];
     const editable = diff.kind === "worktree";
     const savePath = `${diff.repoPath}/${diff.path}`;
     // Track the b side's doc so refetches can tell unsaved edits apart.

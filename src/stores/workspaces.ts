@@ -15,6 +15,7 @@ import { gitOpen } from "../lib/ipc";
 import { disposeSession } from "../lib/termSessions";
 import { createRepoStore, type RepoState, type RepoStore } from "./repo";
 import { createEditorStore, type EditorState, type EditorStore } from "./editor";
+import { createSearchStore, type SearchState, type SearchStore } from "./search";
 import {
   createTerminalStore,
   type TerminalState,
@@ -32,6 +33,7 @@ export interface Workspace {
   repo: RepoStore;
   editor: EditorStore;
   terminal: TerminalStore;
+  search: SearchStore;
 }
 
 interface WorkspacesState {
@@ -109,6 +111,7 @@ export const useWorkspacesStore = create<WorkspacesState>((set, get) => ({
       repo: createRepoStore(root),
       editor: createEditorStore(),
       terminal: createTerminalStore(),
+      search: createSearchStore(root),
     };
     set((s) => {
       const next = {
@@ -273,6 +276,11 @@ export function useEditor<T>(selector: (s: EditorState) => T): T {
 /** Subscribe to a slice of the surrounding workspace's terminal store. */
 export function useTerminal<T>(selector: (s: TerminalState) => T): T {
   return useStore(useWorkspace().terminal, selector);
+}
+
+/** Subscribe to a slice of the surrounding workspace's search store. */
+export function useSearch<T>(selector: (s: SearchState) => T): T {
+  return useStore(useWorkspace().search, selector);
 }
 
 /**

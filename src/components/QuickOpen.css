@@ -1,0 +1,74 @@
+/* ⌘P quick open: top-centered overlay, VS Code-style. Same shell as the
+   task picker (.task-picker); the backdrop is a transparent click-catcher. */
+.quick-open-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.quick-open {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 520px;
+  max-width: calc(100vw - 80px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+
+.quick-open-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.quick-open-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: left;
+}
+/* selection follows the keyboard AND the mouse (onMouseEnter), so a
+   separate :hover background would just double up */
+.quick-open-item.selected {
+  background: var(--bg-selected);
+}
+
+.qo-base {
+  flex-shrink: 0;
+  max-width: 60%;
+}
+
+.qo-dir {
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+}
+
+.qo-match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.quick-open-empty {
+  padding: 10px;
+  text-align: center;
+  color: var(--fg-faint);
+  user-select: text;
+}
+
+.quick-open-note {
+  padding: 2px 8px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-faint);
+}

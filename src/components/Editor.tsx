@@ -18,6 +18,7 @@ import {
   useWorkspace,
   useWorkspacesStore,
 } from "../stores/workspaces";
+import { editorSearch } from "./EditorSearch";
 import { IcClose } from "./icons";
 import "./EditorArea.css";
 
@@ -149,6 +150,7 @@ useWorkspacesStore.subscribe((s) => {
 export default function Editor({ tab }: { tab: FileTab }) {
   const ws = useWorkspace();
   const markDirty = useEditor((s) => s.markDirty);
+  const reveal = useEditor((s) => s.reveal);
   const draftKey = draftKeyFor(ws.path, tab.id);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -200,6 +202,31 @@ export default function Editor({ tab }: { tab: FileTab }) {
     },
     [tab.id, tab.path, draftKey, markDirty],
   );
+
+  /** Move the cursor to line/column (1-based, UTF-16 cols — what CodeMirror
+      positions use) and scroll it to the vertical center, clamping both. */
+  const revealTo = useCallback((line: number, column: number) => {
+    const v = viewRef.current;
+    if (!v) return;
+    const ln = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)));
+    const pos = Math.min(ln.from + Math.max(0, column - 1), ln.to);
+    v.dispatch({
+      selection: { anchor: pos },
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
+    v.focus();
+  }, []);
+
+  // Reveal on an ALREADY-open tab (e.g. a second search hit in the same
+  // file). Pre-view reveals no-op here — the load effect below consumes
+  // them once the view exists. clearReveal is nonce-gated, so whichever
+  // consumer fires first wins and the other (StrictMode reruns included)
+  // is a no-op.
+  useEffect(() => {
+    if (!reveal || reveal.tabId !== tab.id || !viewRef.current) return;
+    revealTo(reveal.line, reveal.column);
+    ws.editor.getState().clearReveal(reveal.nonce);
+  }, [reveal, tab.id, revealTo, ws.editor]);
 
   /** Replace the buffer with the on-disk content and mark it clean. */
   const reloadFromDisk = useCallback(async () => {
@@ -287,6 +314,7 @@ export default function Editor({ tab }: { tab: FileTab }) {
       const extensions: CmExtension[] = [
         basicSetup,
         editorTheme,
+        editorSearch,
         lang ?? [],
         EditorView.updateListener.of((u) => {
           if (!u.docChanged) return;
@@ -306,6 +334,14 @@ export default function Editor({ tab }: { tab: FileTab }) {
       savedRef.current =
         typeof savedDoc === "string" ? view.state.toText(savedDoc) : savedDoc;
       setLoading(false);
+
+      // Consume a reveal requested before the view existed (fresh open from
+      // a search result / quick open with a target line).
+      const req = ws.editor.getState().reveal;
+      if (req && req.tabId === tab.id) {
+        revealTo(req.line, req.column);
+        ws.editor.getState().clearReveal(req.nonce);
+      }
 
       // Watch for external modifications (debounced — events arrive in bursts).
       // Events arrive for every open workspace; only the repo containing this
@@ -331,7 +367,7 @@ export default function Editor({ tab }: { tab: FileTab }) {
       viewRef.current = null;
       view?.destroy();
     };
-  }, [tab.id, tab.path, draftKey, markDirty, save]);
+  }, [tab.id, tab.path, draftKey, markDirty, save, revealTo, ws.editor]);
 
   return (
     <div className="editor-pane">

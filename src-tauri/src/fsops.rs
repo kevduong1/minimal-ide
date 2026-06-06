@@ -25,11 +25,12 @@ pub struct FileContent {
 }
 
 /// Files larger than this are truncated (on a char boundary) before being
-/// sent to the webview.
-const MAX_TEXT_BYTES: usize = 5 * 1024 * 1024;
+/// sent to the webview. Workspace search (search.rs) skips such files
+/// entirely so its notion of "searchable" matches the editor's "editable".
+pub(crate) const MAX_TEXT_BYTES: usize = 5 * 1024 * 1024;
 
 /// Number of leading bytes inspected for NUL to classify a file as binary.
-const BINARY_SNIFF_BYTES: usize = 8000;
+pub(crate) const BINARY_SNIFF_BYTES: usize = 8000;
 
 #[tauri::command]
 pub async fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {

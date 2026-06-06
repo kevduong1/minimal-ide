@@ -1,0 +1,182 @@
+/* VS Code-style floating find/replace widget (EditorSearch.tsx). The panel
+   strip is collapsed to a zero-height overlay by the extension's theme; the
+   .edfind-panel positions the card in the editor's top-right corner.
+   Selectors carry a .cm-editor prefix so they out-rank CodeMirror's injected
+   base/instance themes (which use two-class selectors). */
+
+.cm-editor .cm-panel.edfind-panel {
+  position: absolute;
+  top: 0;
+  right: 14px;
+  max-width: calc(100% - 28px);
+  padding: 0;
+  border: none;
+  background: transparent;
+  pointer-events: auto;
+}
+
+@keyframes edfind-in {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.edfind {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: edfind-in 0.12s ease-out;
+}
+
+/* full-height replace-row reveal chevron, VS Code-style */
+.edfind-expand {
+  width: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg-dim);
+}
+.edfind-expand:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.edfind-expand svg {
+  width: 12px;
+  height: 12px;
+}
+
+.edfind-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.edfind-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.edfind-input-wrap {
+  position: relative;
+  width: 232px;
+  min-width: 96px;
+  flex-shrink: 1;
+}
+
+.edfind-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  padding: 3px 7px;
+  outline: none;
+}
+.edfind-input:focus {
+  border-color: var(--focus-ring);
+}
+.edfind-input::placeholder {
+  color: var(--fg-faint);
+  font-family: var(--font-ui);
+}
+.edfind-input-wrap.danger .edfind-input {
+  border-color: var(--danger);
+}
+/* room for the three toggle buttons (find input only) */
+.edfind-row:first-child .edfind-input {
+  padding-right: 66px;
+}
+
+.edfind-toggles {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 1px;
+}
+
+.edfind-toggle {
+  width: 19px;
+  height: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--fg-dim);
+}
+.edfind-toggle:hover {
+  background: var(--bg-hover);
+}
+.edfind-toggle.active {
+  background: var(--bg-selected);
+  color: var(--accent);
+}
+.edfind-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+.edfind-count {
+  min-width: 62px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.edfind-count.danger {
+  color: var(--danger);
+}
+
+.edfind-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg-dim);
+}
+.edfind-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.edfind-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.edfind-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Search-match highlights: accent-tinted matches, amber current match
+   (three-class selectors beat oneDark's two-class instance theme). */
+.cm-editor .cm-content .cm-searchMatch {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 2px;
+}
+.cm-editor .cm-content .cm-searchMatch.cm-searchMatch-selected {
+  background: color-mix(in srgb, var(--warning) 38%, transparent);
+  outline: 1px solid var(--warning);
+}
